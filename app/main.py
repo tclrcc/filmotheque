@@ -1,5 +1,8 @@
 from datetime import datetime, timezone
 from pathlib import Path
+from collections import Counter
+import csv
+import io
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -7,7 +10,7 @@ load_dotenv()
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from app.database import init_db, get_conn
 from app.schemas import FilmIn, FilmUpdate, FilmOut
@@ -138,6 +141,78 @@ def random_film(genre: str | None = None):
     if not row:
         raise HTTPException(404, "Aucun film a voir dans la liste (avec ce filtre)")
     return _row_to_dict(row)
+
+
+@app.get("/api/stats")
+def get_stats():
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM films").fetchall()
+
+    films_all = [_row_to_dict(r) for r in rows]
+    vus = [f for f in films_all if f["statut"] == "vu"]
+    a_voir = [f for f in films_all if f["statut"] == "avoir"]
+
+    notes = [f["note"] for f in vus if f["note"] is not None]
+    note_moyenne = round(sum(notes) / len(notes), 2) if notes else None
+
+    genre_counter = Counter()
+    for f in vus:
+        for g in [x.strip() for x in (f["genres"] or "").split(",") if x.strip()]:
+            genre_counter[g] += 1
+
+    realisateur_counter = Counter()
+    for f in vus:
+        r = (f["realisateur"] or "").strip()
+        if r:
+            realisateur_counter[r] += 1
+
+    acteur_counter = Counter()
+    for f in vus:
+        for a in [x.strip() for x in (f["acteurs"] or "").split(",") if x.strip()]:
+            acteur_counter[a] += 1
+
+    mois_counter = Counter()
+    for f in vus:
+        if f["date_vu"]:
+            mois_counter[f["date_vu"][:7]] += 1
+    vus_par_mois = sorted(mois_counter.items())[-12:]
+
+    return {
+        "total_films": len(films_all),
+        "total_vus": len(vus),
+        "total_a_voir": len(a_voir),
+        "note_moyenne": note_moyenne,
+        "top_genres": genre_counter.most_common(5),
+        "top_realisateurs": realisateur_counter.most_common(5),
+        "top_acteurs": acteur_counter.most_common(5),
+        "vus_par_mois": vus_par_mois,
+    }
+
+
+@app.get("/api/films/export.csv")
+def export_csv():
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM films ORDER BY date_ajout DESC").fetchall()
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, delimiter=";")
+    writer.writerow([
+        "titre", "annee", "genres", "acteurs", "realisateur", "plateforme",
+        "statut", "note", "commentaire", "date_ajout", "date_vu",
+    ])
+    for r in rows:
+        f = _row_to_dict(r)
+        writer.writerow([
+            f["titre"], f["annee"], f["genres"], f["acteurs"], f["realisateur"],
+            f["plateforme"], f["statut"], f["note"], f["commentaire"],
+            f["date_ajout"], f["date_vu"],
+        ])
+    buffer.seek(0)
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=filmotheque.csv"},
+    )
 
 
 @app.get("/api/meta/genres")

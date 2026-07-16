@@ -56,6 +56,29 @@
   }
   .rouletbtn:hover { background: rgba(167,58,70,0.12); }
 
+  .statsbtn, .exportbtn {
+    background: none; border: 1px solid var(--line); color: var(--ink-dim); padding: 9px 16px;
+    border-radius: 8px; font-weight: 500; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  .statsbtn:hover, .exportbtn:hover { border-color: var(--gold-dim); color: var(--ink); }
+
+  .stats-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: flex-start; justify-content: center; padding: 4vh 1rem; z-index: 55; overflow-y: auto; }
+  .stats-panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 24px; width: 100%; max-width: 620px; }
+  .stats-panel h3 { font-size: 24px; color: var(--gold); margin-bottom: 18px; }
+  .stats-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }
+  .stats-metric { background: var(--card-hi); border-radius: 8px; padding: 12px 10px; text-align: center; }
+  .stats-metric .val { font-family: 'Bebas Neue', sans-serif; font-size: 26px; color: var(--gold); }
+  .stats-metric .lbl { font-size: 10.5px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; margin-top: 2px; }
+  .stats-section { margin-bottom: 18px; }
+  .stats-section h4 { font-size: 13px; color: var(--ink-dim); font-family: 'IBM Plex Mono', monospace; font-weight: 400; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stats-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12.5px; }
+  .stats-bar-label { width: 130px; flex-shrink: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stats-bar-track { flex: 1; background: var(--void); border-radius: 4px; height: 14px; overflow: hidden; }
+  .stats-bar-fill { background: var(--gold-dim); height: 100%; }
+  .stats-bar-count { width: 20px; text-align: right; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; }
+  .stats-empty { color: var(--ink-faint); font-size: 13px; }
+  .stats-close { margin-top: 6px; }
+
   .actor-chip {
     display: inline-flex; align-items: center; gap: 8px; background: var(--card-hi);
     border: 1px solid var(--teal); color: #6FBDB4; font-size: 12px; padding: 5px 10px;
@@ -157,6 +180,8 @@
       <option value="titre">Titre A-Z</option>
     </select>
     <button class="rouletbtn" id="roulettebtn">Seance surprise</button>
+    <button class="statsbtn" id="statsbtn">Statistiques</button>
+    <button class="exportbtn" id="exportbtn">Export CSV</button>
     <button class="addbtn" id="addbtn">+ Ajouter un film</button>
   </div>
 
@@ -167,6 +192,7 @@
 
 <div id="modal-root"></div>
 <div id="roulette-root"></div>
+<div id="stats-root"></div>
 
 <script>
 const API = '';
@@ -179,6 +205,7 @@ let activeActor = null;
 const grid = document.getElementById('grid');
 const modalRoot = document.getElementById('modal-root');
 const rouletteRoot = document.getElementById('roulette-root');
+const statsRoot = document.getElementById('stats-root');
 const countEl = document.getElementById('count');
 const actorChipZone = document.getElementById('actor-chip-zone');
 const searchEl = document.getElementById('search');
@@ -561,11 +588,78 @@ async function drawRoulette() {
 
 document.getElementById('addbtn').onclick = () => openModal(null);
 document.getElementById('roulettebtn').onclick = openRoulette;
+document.getElementById('statsbtn').onclick = openStats;
+document.getElementById('exportbtn').onclick = () => { window.location.href = `${API}/api/films/export.csv`; };
 let debounce;
 searchEl.oninput = () => { clearTimeout(debounce); debounce = setTimeout(loadFilms, 250); };
 genreFilterEl.onchange = loadFilms;
 statusFilterEl.onchange = loadFilms;
 sortEl.onchange = loadFilms;
+
+async function openStats() {
+  statsRoot.innerHTML = `
+    <div class="stats-backdrop" id="stats-backdrop">
+      <div class="stats-panel">
+        <h3>Statistiques</h3>
+        <div class="stats-empty">Calcul en cours...</div>
+      </div>
+    </div>
+  `;
+  document.getElementById('stats-backdrop').onclick = (e) => { if (e.target.id === 'stats-backdrop') closeStats(); };
+
+  const res = await fetch(`${API}/api/stats`);
+  const s = await res.json();
+
+  const bar = (label, count, max) => `
+    <div class="stats-bar-row">
+      <div class="stats-bar-label">${escapeHtml(label)}</div>
+      <div class="stats-bar-track"><div class="stats-bar-fill" style="width:${max ? Math.round((count / max) * 100) : 0}%;"></div></div>
+      <div class="stats-bar-count">${count}</div>
+    </div>
+  `;
+
+  const genreMax = s.top_genres.length ? s.top_genres[0][1] : 0;
+  const realMax = s.top_realisateurs.length ? s.top_realisateurs[0][1] : 0;
+  const acteurMax = s.top_acteurs.length ? s.top_acteurs[0][1] : 0;
+  const moisMax = s.vus_par_mois.length ? Math.max(...s.vus_par_mois.map(x => x[1])) : 0;
+
+  document.querySelector('.stats-panel').innerHTML = `
+    <h3>Statistiques</h3>
+    <div class="stats-metrics">
+      <div class="stats-metric"><div class="val">${s.total_films}</div><div class="lbl">TOTAL</div></div>
+      <div class="stats-metric"><div class="val">${s.total_vus}</div><div class="lbl">VUS</div></div>
+      <div class="stats-metric"><div class="val">${s.total_a_voir}</div><div class="lbl">A VOIR</div></div>
+      <div class="stats-metric"><div class="val">${s.note_moyenne !== null ? s.note_moyenne : '--'}</div><div class="lbl">NOTE MOY.</div></div>
+    </div>
+
+    <div class="stats-section">
+      <h4>Genres les plus vus</h4>
+      ${s.top_genres.length ? s.top_genres.map(([g, c]) => bar(g, c, genreMax)).join('') : '<div class="stats-empty">Pas encore de film vu.</div>'}
+    </div>
+
+    <div class="stats-section">
+      <h4>Realisateurs recurrents</h4>
+      ${s.top_realisateurs.length ? s.top_realisateurs.map(([r, c]) => bar(r, c, realMax)).join('') : '<div class="stats-empty">Pas encore de donnees.</div>'}
+    </div>
+
+    <div class="stats-section">
+      <h4>Acteurs recurrents</h4>
+      ${s.top_acteurs.length ? s.top_acteurs.map(([a, c]) => bar(a, c, acteurMax)).join('') : '<div class="stats-empty">Pas encore de donnees.</div>'}
+    </div>
+
+    <div class="stats-section">
+      <h4>Films vus par mois</h4>
+      ${s.vus_par_mois.length ? s.vus_par_mois.map(([m, c]) => bar(m, c, moisMax)).join('') : '<div class="stats-empty">Pas encore de donnees.</div>'}
+    </div>
+
+    <button class="btn-cancel stats-close" id="stats-close">Fermer</button>
+  `;
+  document.getElementById('stats-close').onclick = closeStats;
+}
+
+function closeStats() {
+  statsRoot.innerHTML = '';
+}
 
 loadFilms();
 loadGenres();
