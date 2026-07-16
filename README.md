@@ -52,7 +52,39 @@ Logs en direct :
 journalctl -u filmotheque -f
 ```
 
-## 4. Exposer via nginx (optionnel, si tu veux y acceder par un nom de domaine)
+## 4. Acceder directement via l'IP publique (utile pour tester depuis ton telephone)
+
+Le service ecoute desormais sur `0.0.0.0:8010`, donc accessible depuis
+n'importe quelle interface, pas seulement en local. Il reste deux choses
+a ouvrir :
+
+**a) Firewall du systeme (si `ufw` est actif)**
+```bash
+sudo ufw status
+sudo ufw allow 8010/tcp
+```
+
+**b) Firewall reseau OVH (souvent la vraie cause d'un blocage, distinct de ufw)**
+Dans le Manager OVH, section reseau/firewall de ton VPS Cloud, ajoute une
+regle autorisant le port `8010` en TCP entrant. Sans ca, `ufw allow` seul
+ne suffit pas : OVH filtre en amont de la machine.
+
+Ensuite, recupere l'IP publique du VPS :
+```bash
+curl -4 ifconfig.me
+```
+
+Et ouvre `http://<ip-publique>:8010` depuis ton navigateur ou ton telephone
+(sur le meme reseau ou non, tant que le port est ouvert).
+
+**Attention** : ce mode n'a pas d'authentification. Tant que le port est
+ouvert, n'importe qui connaissant l'IP peut voir/modifier/supprimer tes
+films. Pratique pour tester vite, mais a refermer (`sudo ufw delete allow
+8010/tcp` + retirer la regle OVH, ou repasser le service en
+`--host 127.0.0.1`) une fois les tests termines, ou a remplacer par la
+solution nginx + HTTPS ci-dessous pour un usage durable.
+
+## 5. Exposer via nginx (optionnel, si tu veux y acceder par un nom de domaine)
 
 Si tu as deja un reverse proxy nginx pour Pitch, ajoute un bloc similaire,
 par exemple sur un sous-domaine `films.tondomaine.fr` :
