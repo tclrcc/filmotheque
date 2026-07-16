@@ -1,0 +1,15 @@
+[Unit]
+Description=Filmotheque - watchlist films
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/filmotheque
+EnvironmentFile=/home/ubuntu/filmotheque/.env
+ExecStart=/home/ubuntu/filmotheque/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

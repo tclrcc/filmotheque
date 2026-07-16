@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Filmotheque</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Work+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --void: #121110;
+    --card: #1C1A17;
+    --card-hi: #242019;
+    --gold: #D9A441;
+    --gold-dim: #8A6A2E;
+    --velvet: #A73A46;
+    --teal: #2F6E68;
+    --ink: #F3EDE4;
+    --ink-dim: #A79E92;
+    --ink-faint: #6F675C;
+    --line: #34302A;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Work Sans', sans-serif;
+    background: var(--void);
+    color: var(--ink);
+  }
+  h1, h2, h3 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.03em; margin: 0; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+
+  .header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 2rem; border-bottom: 1px solid var(--line); padding-bottom: 1.25rem; }
+  .header h1 { font-size: 42px; color: var(--gold); }
+  .header .sub { font-size: 13px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.05em; }
+
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 1.5rem; align-items: center; }
+  .toolbar input[type="text"], .toolbar select {
+    background: var(--card); border: 1px solid var(--line); color: var(--ink);
+    padding: 9px 12px; border-radius: 8px; font-size: 13px; font-family: 'Work Sans', sans-serif;
+  }
+  .toolbar input[type="text"] { flex: 1; min-width: 180px; }
+  .toolbar select { min-width: 130px; }
+  .toolbar input:focus, .toolbar select:focus { outline: none; border-color: var(--gold-dim); }
+
+  .addbtn {
+    background: var(--gold); color: #1A1508; border: none; padding: 10px 18px;
+    border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  .addbtn:hover { background: #E8B65A; }
+
+  .rouletbtn {
+    background: none; border: 1px solid var(--velvet); color: var(--velvet); padding: 9px 16px;
+    border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; white-space: nowrap;
+    font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.02em;
+  }
+  .rouletbtn:hover { background: rgba(167,58,70,0.12); }
+
+  .actor-chip {
+    display: inline-flex; align-items: center; gap: 8px; background: var(--card-hi);
+    border: 1px solid var(--teal); color: #6FBDB4; font-size: 12px; padding: 5px 10px;
+    border-radius: 20px; margin-bottom: 12px; font-family: 'IBM Plex Mono', monospace;
+  }
+  .actor-chip button { background: none; border: none; color: #6FBDB4; cursor: pointer; font-size: 14px; padding: 0; line-height: 1; }
+
+  .count { font-size: 12px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; margin-bottom: 1rem; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+
+  .ticket { background: var(--card); border-radius: 10px; position: relative; display: flex; overflow: hidden; border: 1px solid var(--line); }
+  .ticket.vu { opacity: 0.72; }
+
+  .poster { width: 64px; flex-shrink: 0; background: var(--card-hi); object-fit: cover; }
+  .poster-placeholder { width: 64px; flex-shrink: 0; background: var(--card-hi); display: flex; align-items: center; justify-content: center; color: var(--ink-faint); font-size: 10px; text-align: center; padding: 4px; }
+
+  .ticket-main { flex: 1; padding: 14px 14px 14px 14px; min-width: 0; }
+  .ticket-title { font-size: 19px; color: var(--ink); line-height: 1.15; margin-bottom: 3px; overflow-wrap: break-word; }
+  .ticket-year { font-size: 12px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; }
+  .ticket-meta { font-size: 12px; color: var(--ink-dim); margin: 4px 0 8px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+  .tag { font-size: 10.5px; padding: 2px 8px; border-radius: 20px; font-family: 'IBM Plex Mono', monospace; }
+  .tag.genre { background: rgba(217,164,65,0.15); color: var(--gold); }
+  .tag.actor { background: rgba(47,110,104,0.25); color: #6FBDB4; cursor: pointer; }
+  .tag.actor:hover { background: rgba(47,110,104,0.4); }
+
+  .roulette-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; padding: 4vh 1rem; z-index: 60; }
+  .roulette-card { background: var(--card); border: 1px solid var(--gold-dim); border-radius: 14px; padding: 28px; width: 100%; max-width: 420px; text-align: center; }
+  .roulette-eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--ink-faint); letter-spacing: 0.08em; margin-bottom: 10px; }
+  .roulette-poster { width: 140px; height: 210px; object-fit: cover; border-radius: 8px; margin: 0 auto 14px; display: block; background: var(--card-hi); }
+  .roulette-title { font-size: 26px; color: var(--gold); margin-bottom: 4px; }
+  .roulette-meta { font-size: 13px; color: var(--ink-dim); margin-bottom: 16px; }
+  .roulette-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+  .comment { font-size: 12.5px; color: var(--ink-dim); font-style: italic; margin-top: 6px; border-left: 2px solid var(--line); padding-left: 8px; }
+
+  .ticket-stub {
+    width: 82px; flex-shrink: 0; border-left: 2px dashed var(--line); background: var(--card-hi);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 10px 4px; position: relative;
+  }
+  .ticket-stub::before, .ticket-stub::after { content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--void); left: -8px; }
+  .ticket-stub::before { top: -7px; }
+  .ticket-stub::after { bottom: -7px; }
+
+  .note { font-family: 'Bebas Neue', sans-serif; font-size: 22px; color: var(--gold); }
+  .note.empty { color: var(--ink-faint); font-size: 13px; font-family: 'Work Sans', sans-serif; }
+
+  .statusbtn { background: none; border: 1px solid var(--line); color: var(--ink-dim); font-size: 10px; padding: 4px 6px; border-radius: 6px; cursor: pointer; font-family: 'IBM Plex Mono', monospace; text-align: center; width: 100%; }
+  .statusbtn.vu-active { background: var(--teal); color: #fff; border-color: var(--teal); }
+  .delbtn { background: none; border: none; color: var(--ink-faint); cursor: pointer; font-size: 15px; padding: 0; }
+  .delbtn:hover { color: var(--velvet); }
+
+  .empty-state { text-align: center; padding: 3.5rem 1rem; color: var(--ink-faint); font-size: 14px; grid-column: 1/-1; }
+
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: flex-start; justify-content: center; padding: 4vh 1rem; z-index: 50; overflow-y: auto; }
+  .modal { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px; width: 100%; max-width: 520px; }
+  .modal h3 { font-size: 22px; color: var(--gold); margin-bottom: 14px; }
+
+  .tmdb-search-wrap { position: relative; margin-bottom: 14px; }
+  .tmdb-results { position: absolute; top: 100%; left: 0; right: 0; background: var(--void); border: 1px solid var(--line); border-radius: 8px; margin-top: 4px; max-height: 240px; overflow-y: auto; z-index: 10; }
+  .tmdb-result-item { display: flex; gap: 10px; padding: 8px 10px; cursor: pointer; align-items: center; }
+  .tmdb-result-item:hover { background: var(--card-hi); }
+  .tmdb-result-item img { width: 32px; height: 48px; object-fit: cover; border-radius: 3px; background: var(--card-hi); }
+  .tmdb-result-item .rt { font-size: 13px; }
+  .tmdb-result-item .ry { font-size: 11px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; }
+  .tmdb-status { font-size: 11px; color: var(--ink-faint); margin-top: -8px; margin-bottom: 12px; font-family: 'IBM Plex Mono', monospace; }
+
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .form-grid .full { grid-column: 1 / -1; }
+  .form-grid label { display: block; font-size: 11px; color: var(--ink-faint); margin-bottom: 4px; font-family: 'IBM Plex Mono', monospace; }
+  .form-grid input, .form-grid select, .form-grid textarea {
+    width: 100%; background: var(--void); border: 1px solid var(--line); color: var(--ink);
+    padding: 8px 10px; border-radius: 6px; font-size: 13px; font-family: 'Work Sans', sans-serif;
+  }
+  .form-grid textarea { resize: vertical; min-height: 60px; }
+  .form-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+  .btn-cancel { background: none; border: 1px solid var(--line); color: var(--ink-dim); padding: 9px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .btn-save { background: var(--gold); color: #1A1508; border: none; padding: 9px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h1>Filmotheque</h1>
+    <span class="sub" id="header-sub">SEANCE ILLIMITEE</span>
+  </div>
+
+  <div class="toolbar">
+    <input type="text" id="search" placeholder="Chercher un titre, un acteur, un realisateur..." />
+    <select id="filter-genre"><option value="">Tous genres</option></select>
+    <select id="filter-status">
+      <option value="">Tous statuts</option>
+      <option value="avoir">A voir</option>
+      <option value="vu">Vu</option>
+    </select>
+    <select id="sort">
+      <option value="recent">Plus recent</option>
+      <option value="note">Meilleure note</option>
+      <option value="titre">Titre A-Z</option>
+    </select>
+    <button class="rouletbtn" id="roulettebtn">Seance surprise</button>
+    <button class="addbtn" id="addbtn">+ Ajouter un film</button>
+  </div>
+
+  <div id="actor-chip-zone"></div>
+  <div class="count" id="count"></div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<div id="modal-root"></div>
+<div id="roulette-root"></div>
+
+<script>
+const API = '';
+let films = [];
+let editingId = null;
+let tmdbSelection = null;
+let tmdbSearchTimeout = null;
+let activeActor = null;
+
+const grid = document.getElementById('grid');
+const modalRoot = document.getElementById('modal-root');
+const rouletteRoot = document.getElementById('roulette-root');
+const countEl = document.getElementById('count');
+const actorChipZone = document.getElementById('actor-chip-zone');
+const searchEl = document.getElementById('search');
+const genreFilterEl = document.getElementById('filter-genre');
+const statusFilterEl = document.getElementById('filter-status');
+const sortEl = document.getElementById('sort');
+
+function escapeHtml(s) {
+  return (s || '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function splitTags(str) { return (str || '').split(',').map(s => s.trim()).filter(Boolean); }
+
+async function loadFilms() {
+  const params = new URLSearchParams();
+  if (searchEl.value.trim()) params.set('search', searchEl.value.trim());
+  if (genreFilterEl.value) params.set('genre', genreFilterEl.value);
+  if (statusFilterEl.value) params.set('statut', statusFilterEl.value);
+  if (activeActor) params.set('acteur', activeActor);
+  params.set('sort', sortEl.value);
+
+  const res = await fetch(`${API}/api/films?${params.toString()}`);
+  films = await res.json();
+  renderActorChip();
+  render();
+}
+
+function renderActorChip() {
+  if (!activeActor) { actorChipZone.innerHTML = ''; return; }
+  actorChipZone.innerHTML = `
+    <div class="actor-chip">
+      Acteur : ${escapeHtml(activeActor)}
+      <button id="clear-actor-chip">&times;</button>
+    </div>
+  `;
+  document.getElementById('clear-actor-chip').onclick = () => {
+    activeActor = null;
+    loadFilms();
+  };
+}
+
+function filterByActor(name) {
+  activeActor = name;
+  loadFilms();
+}
+
+async function loadGenres() {
+  const res = await fetch(`${API}/api/meta/genres`);
+  const genres = await res.json();
+  const current = genreFilterEl.value;
+  genreFilterEl.innerHTML = '<option value="">Tous genres</option>' +
+    genres.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
+  genreFilterEl.value = current;
+}
+
+function render() {
+  countEl.textContent = `${films.length} film${films.length > 1 ? 's' : ''} affiche${films.length > 1 ? 's' : ''}`;
+
+  if (films.length === 0) {
+    grid.innerHTML = `<div class="empty-state">Aucun film ici. Ajoute ton premier film avec le bouton ci-dessus.</div>`;
+    return;
+  }
+
+  grid.innerHTML = films.map(f => {
+    const genres = splitTags(f.genres);
+    const acteurs = splitTags(f.acteurs);
+    const posterHtml = f.poster_url
+      ? `<img class="poster" src="${escapeHtml(f.poster_url)}" alt="" />`
+      : `<div class="poster-placeholder">${escapeHtml((f.titre || '?').slice(0,1))}</div>`;
+    return `
+      <div class="ticket ${f.statut === 'vu' ? 'vu' : ''}">
+        ${posterHtml}
+        <div class="ticket-main">
+          <div class="ticket-title">${escapeHtml(f.titre)} ${f.annee ? `<span class="ticket-year">(${f.annee})</span>` : ''}</div>
+          <div class="ticket-meta">${escapeHtml(f.realisateur || '')}${f.realisateur && f.plateforme ? ' &middot; ' : ''}${escapeHtml(f.plateforme || '')}</div>
+          <div class="tags">
+            ${genres.map(g => `<span class="tag genre">${escapeHtml(g)}</span>`).join('')}
+            ${acteurs.slice(0, 3).map(a => `<span class="tag actor" data-actor="${escapeHtml(a)}">${escapeHtml(a)}</span>`).join('')}
+          </div>
+          ${f.statut === 'vu' && f.commentaire ? `<div class="comment">${escapeHtml(f.commentaire)}</div>` : ''}
+        </div>
+        <div class="ticket-stub">
+          ${f.note !== null && f.note !== undefined ? `<div class="note">${f.note}</div>` : `<div class="note empty">--</div>`}
+          <button class="statusbtn ${f.statut === 'vu' ? 'vu-active' : ''}" data-action="toggle" data-id="${f.id}">${f.statut === 'vu' ? 'VU' : 'A VOIR'}</button>
+          <button class="statusbtn" data-action="edit" data-id="${f.id}">Editer</button>
+          <button class="delbtn" data-action="delete" data-id="${f.id}">&times;</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  grid.querySelectorAll('[data-action]').forEach(btn => {
+    const id = parseInt(btn.getAttribute('data-id'), 10);
+    const action = btn.getAttribute('data-action');
+    btn.onclick = () => {
+      if (action === 'toggle') toggleStatus(id);
+      else if (action === 'delete') deleteFilm(id);
+      else if (action === 'edit') openModal(films.find(f => f.id === id));
+    };
+  });
+
+  grid.querySelectorAll('.tag.actor').forEach(tag => {
+    tag.onclick = () => filterByActor(tag.getAttribute('data-actor'));
+  });
+}
+
+async function toggleStatus(id) {
+  const f = films.find(x => x.id === id);
+  await fetch(`${API}/api/films/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ statut: f.statut === 'vu' ? 'avoir' : 'vu' }),
+  });
+  await loadFilms();
+  await loadGenres();
+}
+
+async function deleteFilm(id) {
+  if (!confirm('Retirer ce film de la filmotheque ?')) return;
+  await fetch(`${API}/api/films/${id}`, { method: 'DELETE' });
+  await loadFilms();
+  await loadGenres();
+}
+
+function openModal(existing) {
+  editingId = existing ? existing.id : null;
+  tmdbSelection = existing ? {
+    tmdb_id: existing.tmdb_id, poster_url: existing.poster_url,
+  } : null;
+  const f = existing || { titre: '', annee: '', genres: '', acteurs: '', realisateur: '', plateforme: '', note: '', statut: 'avoir', commentaire: '' };
+
+  modalRoot.innerHTML = `
+    <div class="modal-backdrop" id="modal-backdrop">
+      <div class="modal">
+        <h3>${existing ? 'Modifier' : 'Nouveau film'}</h3>
+        ${existing ? '' : `
+          <div class="tmdb-search-wrap">
+            <label style="display:block;font-size:11px;color:var(--ink-faint);margin-bottom:4px;font-family:'IBM Plex Mono',monospace;">Rechercher sur TMDb (pre-remplissage automatique)</label>
+            <input type="text" id="tmdb-search" placeholder="Tape un titre de film..." autocomplete="off" />
+            <div class="tmdb-results" id="tmdb-results" style="display:none;"></div>
+          </div>
+          <div class="tmdb-status" id="tmdb-status"></div>
+        `}
+        <div class="form-grid">
+          <div class="full">
+            <label>Titre</label>
+            <input type="text" id="f-titre" value="${escapeHtml(f.titre)}" placeholder="Le nom du film" />
+          </div>
+          <div>
+            <label>Annee</label>
+            <input type="text" id="f-annee" value="${escapeHtml(f.annee || '')}" placeholder="2024" />
+          </div>
+          <div>
+            <label>Plateforme</label>
+            <input type="text" id="f-plateforme" value="${escapeHtml(f.plateforme)}" placeholder="Netflix, Cinema..." />
+            ${existing && existing.tmdb_id ? `<button type="button" id="refresh-providers-btn" style="margin-top:6px;background:none;border:1px solid var(--line);color:var(--ink-faint);font-size:10.5px;padding:4px 8px;border-radius:6px;cursor:pointer;font-family:'IBM Plex Mono',monospace;">Actualiser plateformes FR</button>` : ''}
+          </div>
+          <div class="full">
+            <label>Genres (separes par virgule)</label>
+            <input type="text" id="f-genres" value="${escapeHtml(f.genres)}" placeholder="Thriller, Drame" />
+          </div>
+          <div class="full">
+            <label>Acteurs (separes par virgule)</label>
+            <input type="text" id="f-acteurs" value="${escapeHtml(f.acteurs)}" placeholder="Marion Cotillard, ..." />
+          </div>
+          <div>
+            <label>Realisateur</label>
+            <input type="text" id="f-real" value="${escapeHtml(f.realisateur)}" />
+          </div>
+          <div>
+            <label>Statut</label>
+            <select id="f-statut">
+              <option value="avoir" ${f.statut === 'avoir' ? 'selected' : ''}>A voir</option>
+              <option value="vu" ${f.statut === 'vu' ? 'selected' : ''}>Vu</option>
+            </select>
+          </div>
+          <div>
+            <label>Note /10 (si vu)</label>
+            <input type="text" id="f-note" value="${escapeHtml(f.note != null ? f.note : '')}" placeholder="8.5" />
+          </div>
+          <div class="full">
+            <label>Commentaire (si vu)</label>
+            <textarea id="f-commentaire" placeholder="Ton avis, une scene marquante...">${escapeHtml(f.commentaire || '')}</textarea>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-cancel" id="modal-cancel">Annuler</button>
+          <button class="btn-save" id="modal-save">Enregistrer</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modal-cancel').onclick = closeModal;
+  document.getElementById('modal-backdrop').onclick = (e) => { if (e.target.id === 'modal-backdrop') closeModal(); };
+  document.getElementById('modal-save').onclick = onSaveModal;
+
+  const refreshBtn = document.getElementById('refresh-providers-btn');
+  if (refreshBtn) {
+    refreshBtn.onclick = async () => {
+      refreshBtn.textContent = 'Chargement...';
+      try {
+        const res = await fetch(`${API}/api/tmdb/providers/${existing.tmdb_id}`);
+        const providers = await res.json();
+        if (res.ok && providers.length > 0) {
+          document.getElementById('f-plateforme').value = providers.join(', ');
+          refreshBtn.textContent = 'Actualise';
+        } else {
+          refreshBtn.textContent = 'Aucune plateforme FR trouvee';
+        }
+      } catch (err) {
+        refreshBtn.textContent = 'Erreur TMDb';
+      }
+    };
+  }
+
+  if (!existing) {
+    const tmdbInput = document.getElementById('tmdb-search');
+    tmdbInput.addEventListener('input', onTmdbSearchInput);
+  }
+}
+
+function closeModal() {
+  modalRoot.innerHTML = '';
+  editingId = null;
+  tmdbSelection = null;
+}
+
+function onTmdbSearchInput(e) {
+  clearTimeout(tmdbSearchTimeout);
+  const q = e.target.value.trim();
+  const resultsEl = document.getElementById('tmdb-results');
+  if (q.length < 2) { resultsEl.style.display = 'none'; return; }
+  tmdbSearchTimeout = setTimeout(async () => {
+    try {
+      const res = await fetch(`${API}/api/tmdb/search?q=${encodeURIComponent(q)}`);
+      if (!res.ok) {
+        const err = await res.json();
+        document.getElementById('tmdb-status').textContent = err.detail || 'Erreur TMDb';
+        resultsEl.style.display = 'none';
+        return;
+      }
+      const results = await res.json();
+      if (results.length === 0) { resultsEl.style.display = 'none'; return; }
+      resultsEl.innerHTML = results.map(r => `
+        <div class="tmdb-result-item" data-tmdb-id="${r.tmdb_id}">
+          <img src="${r.poster_url || ''}" alt="" />
+          <div>
+            <div class="rt">${escapeHtml(r.titre)}</div>
+            <div class="ry">${r.annee || ''}</div>
+          </div>
+        </div>
+      `).join('');
+      resultsEl.style.display = 'block';
+      resultsEl.querySelectorAll('.tmdb-result-item').forEach(item => {
+        item.onclick = () => selectTmdbMovie(parseInt(item.getAttribute('data-tmdb-id'), 10));
+      });
+    } catch (err) {
+      document.getElementById('tmdb-status').textContent = 'Erreur reseau TMDb';
+    }
+  }, 350);
+}
+
+async function selectTmdbMovie(tmdbId) {
+  document.getElementById('tmdb-status').textContent = 'Chargement des details...';
+  document.getElementById('tmdb-results').style.display = 'none';
+  try {
+    const res = await fetch(`${API}/api/tmdb/movie/${tmdbId}`);
+    const d = await res.json();
+    document.getElementById('f-titre').value = d.titre || '';
+    document.getElementById('f-annee').value = d.annee || '';
+    document.getElementById('f-genres').value = d.genres || '';
+    document.getElementById('f-acteurs').value = d.acteurs || '';
+    document.getElementById('f-real').value = d.realisateur || '';
+    if (d.plateformes_fr && d.plateformes_fr.length > 0) {
+      document.getElementById('f-plateforme').value = d.plateformes_fr.join(', ');
+    }
+    tmdbSelection = { tmdb_id: d.tmdb_id, poster_url: d.poster_url };
+    const provInfo = d.plateformes_fr && d.plateformes_fr.length > 0
+      ? ` Dispo FR : ${d.plateformes_fr.join(', ')}.`
+      : ' Aucune plateforme FR trouvee sur TMDb.';
+    document.getElementById('tmdb-status').textContent = 'Fiche pre-remplie depuis TMDb.' + provInfo;
+  } catch (err) {
+    document.getElementById('tmdb-status').textContent = 'Impossible de charger les details TMDb.';
+  }
+}
+
+async function onSaveModal() {
+  const titre = document.getElementById('f-titre').value.trim();
+  if (!titre) return;
+  const noteRaw = document.getElementById('f-note').value.trim();
+  const payload = {
+    titre,
+    annee: parseInt(document.getElementById('f-annee').value, 10) || null,
+    genres: document.getElementById('f-genres').value.trim(),
+    acteurs: document.getElementById('f-acteurs').value.trim(),
+    realisateur: document.getElementById('f-real').value.trim(),
+    plateforme: document.getElementById('f-plateforme').value.trim(),
+    statut: document.getElementById('f-statut').value,
+    note: noteRaw ? parseFloat(noteRaw) : null,
+    commentaire: document.getElementById('f-commentaire').value.trim(),
+  };
+  if (tmdbSelection) {
+    payload.tmdb_id = tmdbSelection.tmdb_id;
+    payload.poster_url = tmdbSelection.poster_url;
+  }
+
+  if (editingId) {
+    await fetch(`${API}/api/films/${editingId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+  } else {
+    await fetch(`${API}/api/films`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+  }
+  closeModal();
+  await loadFilms();
+  await loadGenres();
+}
+
+async function openRoulette() {
+  rouletteRoot.innerHTML = `
+    <div class="roulette-backdrop" id="roulette-backdrop">
+      <div class="roulette-card" id="roulette-card">
+        <div class="roulette-eyebrow">SEANCE SURPRISE</div>
+        <div style="color:var(--ink-faint);font-size:13px;">Tirage en cours...</div>
+      </div>
+    </div>
+  `;
+  document.getElementById('roulette-backdrop').onclick = (e) => {
+    if (e.target.id === 'roulette-backdrop') closeRoulette();
+  };
+  await drawRoulette();
+}
+
+function closeRoulette() {
+  rouletteRoot.innerHTML = '';
+}
+
+async function drawRoulette() {
+  const card = document.getElementById('roulette-card');
+  card.innerHTML = `<div class="roulette-eyebrow">SEANCE SURPRISE</div><div style="color:var(--ink-faint);font-size:13px;">Tirage en cours...</div>`;
+
+  const params = new URLSearchParams();
+  if (genreFilterEl.value) params.set('genre', genreFilterEl.value);
+
+  const res = await fetch(`${API}/api/films/random?${params.toString()}`);
+  if (!res.ok) {
+    const err = await res.json();
+    card.innerHTML = `
+      <div class="roulette-eyebrow">SEANCE SURPRISE</div>
+      <div style="color:var(--ink-dim);font-size:14px;margin:12px 0 18px;">${escapeHtml(err.detail || "Rien a te proposer.")}</div>
+      <div class="roulette-actions">
+        <button class="btn-cancel" id="roulette-close">Fermer</button>
+      </div>
+    `;
+    document.getElementById('roulette-close').onclick = closeRoulette;
+    return;
+  }
+  const f = await res.json();
+  const genres = splitTags(f.genres);
+  card.innerHTML = `
+    <div class="roulette-eyebrow">SEANCE SURPRISE</div>
+    ${f.poster_url ? `<img class="roulette-poster" src="${escapeHtml(f.poster_url)}" alt="" />` : ''}
+    <div class="roulette-title">${escapeHtml(f.titre)}</div>
+    <div class="roulette-meta">${escapeHtml(f.realisateur || '')}${genres.length ? ' &middot; ' + genres.join(', ') : ''}</div>
+    <div class="roulette-actions">
+      <button class="btn-cancel" id="roulette-again">Une autre</button>
+      <button class="statusbtn vu-active" style="width:auto;padding:9px 16px;" id="roulette-watch">Marquer vu</button>
+      <button class="btn-save" id="roulette-close">Fermer</button>
+    </div>
+  `;
+  document.getElementById('roulette-again').onclick = drawRoulette;
+  document.getElementById('roulette-close').onclick = closeRoulette;
+  document.getElementById('roulette-watch').onclick = async () => {
+    await toggleStatus(f.id);
+    closeRoulette();
+  };
+}
+
+document.getElementById('addbtn').onclick = () => openModal(null);
+document.getElementById('roulettebtn').onclick = openRoulette;
+let debounce;
+searchEl.oninput = () => { clearTimeout(debounce); debounce = setTimeout(loadFilms, 250); };
+genreFilterEl.onchange = loadFilms;
+statusFilterEl.onchange = loadFilms;
+sortEl.onchange = loadFilms;
+
+loadFilms();
+loadGenres();
+</script>
+</body>
+</html>
