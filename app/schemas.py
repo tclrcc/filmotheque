@@ -14,6 +14,9 @@ class FilmIn(BaseModel):
     statut: str = Field(default="avoir", pattern="^(avoir|vu)$")
     note: Optional[float] = None
     commentaire: str = ""
+    duree_minutes: Optional[int] = None
+    synopsis: str = ""
+    note_tmdb: Optional[float] = None
 
 
 class FilmUpdate(BaseModel):
@@ -27,6 +30,9 @@ class FilmUpdate(BaseModel):
     statut: Optional[str] = Field(default=None, pattern="^(avoir|vu)$")
     note: Optional[float] = None
     commentaire: Optional[str] = None
+    duree_minutes: Optional[int] = None
+    synopsis: Optional[str] = None
+    note_tmdb: Optional[float] = None
 
 
 class FilmOut(FilmIn):

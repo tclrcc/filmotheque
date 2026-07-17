@@ -69,6 +69,8 @@ async def get_movie_details(tmdb_id: int) -> dict:
     except Exception:
         plateformes_fr = []
 
+    vote_average = detail.get("vote_average")
+
     return {
         "tmdb_id": tmdb_id,
         "titre": detail.get("title"),
@@ -78,6 +80,9 @@ async def get_movie_details(tmdb_id: int) -> dict:
         "realisateur": realisateur,
         "poster_url": f"{TMDB_IMG_BASE}{detail['poster_path']}" if detail.get("poster_path") else None,
         "plateformes_fr": plateformes_fr,
+        "duree_minutes": detail.get("runtime") or None,
+        "synopsis": detail.get("overview") or "",
+        "note_tmdb": round(vote_average, 1) if vote_average else None,
     }
 
 

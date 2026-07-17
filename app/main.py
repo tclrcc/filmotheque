@@ -42,6 +42,8 @@ def list_films(
     statut: str | None = None,
     genre: str | None = None,
     acteur: str | None = None,
+    plateforme: str | None = None,
+    duree_max: int | None = None,
     search: str | None = None,
     sort: str = Query(default="recent", pattern="^(recent|note|titre)$"),
 ):
@@ -57,6 +59,12 @@ def list_films(
     if acteur:
         query += " AND acteurs LIKE ?"
         params.append(f"%{acteur}%")
+    if plateforme:
+        query += " AND plateforme LIKE ?"
+        params.append(f"%{plateforme}%")
+    if duree_max:
+        query += " AND duree_minutes IS NOT NULL AND duree_minutes <= ?"
+        params.append(duree_max)
     if search:
         query += " AND (titre LIKE ? OR acteurs LIKE ? OR realisateur LIKE ?)"
         like = f"%{search}%"
@@ -82,11 +90,13 @@ def create_film(film: FilmIn):
         cur = conn.execute(
             """INSERT INTO films
                (titre, tmdb_id, annee, genres, acteurs, realisateur, plateforme,
-                poster_url, statut, note, commentaire, date_ajout, date_vu)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                poster_url, statut, note, commentaire, date_ajout, date_vu,
+                duree_minutes, synopsis, note_tmdb)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (film.titre, film.tmdb_id, film.annee, film.genres, film.acteurs,
              film.realisateur, film.plateforme, film.poster_url, film.statut,
-             film.note, film.commentaire, now, date_vu),
+             film.note, film.commentaire, now, date_vu,
+             film.duree_minutes, film.synopsis, film.note_tmdb),
         )
         new_id = cur.lastrowid
         row = conn.execute("SELECT * FROM films WHERE id = ?", (new_id,)).fetchone()
@@ -128,12 +138,18 @@ def delete_film(film_id: int):
 
 
 @app.get("/api/films/random", response_model=FilmOut)
-def random_film(genre: str | None = None):
+def random_film(genre: str | None = None, plateforme: str | None = None, duree_max: int | None = None):
     query = "SELECT * FROM films WHERE statut = 'avoir'"
     params: list = []
     if genre:
         query += " AND genres LIKE ?"
         params.append(f"%{genre}%")
+    if plateforme:
+        query += " AND plateforme LIKE ?"
+        params.append(f"%{plateforme}%")
+    if duree_max:
+        query += " AND duree_minutes IS NOT NULL AND duree_minutes <= ?"
+        params.append(duree_max)
     query += " ORDER BY RANDOM() LIMIT 1"
 
     with get_conn() as conn:
@@ -198,13 +214,15 @@ def export_csv():
     writer = csv.writer(buffer, delimiter=";")
     writer.writerow([
         "titre", "annee", "genres", "acteurs", "realisateur", "plateforme",
-        "statut", "note", "commentaire", "date_ajout", "date_vu",
+        "duree_minutes", "note_tmdb", "statut", "note", "commentaire",
+        "synopsis", "date_ajout", "date_vu",
     ])
     for r in rows:
         f = _row_to_dict(r)
         writer.writerow([
             f["titre"], f["annee"], f["genres"], f["acteurs"], f["realisateur"],
-            f["plateforme"], f["statut"], f["note"], f["commentaire"],
+            f["plateforme"], f.get("duree_minutes"), f.get("note_tmdb"),
+            f["statut"], f["note"], f["commentaire"], f.get("synopsis", ""),
             f["date_ajout"], f["date_vu"],
         ])
     buffer.seek(0)
@@ -226,6 +244,19 @@ def list_genres():
             if g:
                 genres.add(g)
     return sorted(genres)
+
+
+@app.get("/api/meta/plateformes")
+def list_plateformes():
+    with get_conn() as conn:
+        rows = conn.execute("SELECT plateforme FROM films WHERE plateforme != ''").fetchall()
+    plateformes = set()
+    for row in rows:
+        for p in row["plateforme"].split(","):
+            p = p.strip()
+            if p:
+                plateformes.add(p)
+    return sorted(plateformes)
 
 
 @app.get("/api/tmdb/search")

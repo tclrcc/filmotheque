@@ -105,6 +105,12 @@
   .tag.genre { background: rgba(217,164,65,0.15); color: var(--gold); }
   .tag.actor { background: rgba(47,110,104,0.25); color: #6FBDB4; cursor: pointer; }
   .tag.actor:hover { background: rgba(47,110,104,0.4); }
+  .tag.duree { background: rgba(163,163,163,0.15); color: var(--ink-dim); }
+  .tag.note-tmdb { background: rgba(217,164,65,0.28); color: var(--gold); font-weight: 600; }
+
+  .synopsis-toggle { background: none; border: none; color: var(--ink-faint); font-size: 11px; cursor: pointer; padding: 0; margin-top: 6px; text-decoration: underline; font-family: 'Work Sans', sans-serif; }
+  .synopsis-text { font-size: 12.5px; color: var(--ink-dim); margin-top: 6px; line-height: 1.4; display: none; }
+  .synopsis-text.open { display: block; }
 
   .roulette-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; padding: 4vh 1rem; z-index: 60; }
   .roulette-card { background: var(--card); border: 1px solid var(--gold-dim); border-radius: 14px; padding: 28px; width: 100%; max-width: 420px; text-align: center; }
@@ -169,6 +175,13 @@
   <div class="toolbar">
     <input type="text" id="search" placeholder="Chercher un titre, un acteur, un realisateur..." />
     <select id="filter-genre"><option value="">Tous genres</option></select>
+    <select id="filter-plateforme"><option value="">Toutes plateformes</option></select>
+    <select id="filter-duree">
+      <option value="">Toutes durees</option>
+      <option value="90">&le; 1h30</option>
+      <option value="110">&le; 1h50</option>
+      <option value="130">&le; 2h10</option>
+    </select>
     <select id="filter-status">
       <option value="">Tous statuts</option>
       <option value="avoir">A voir</option>
@@ -210,6 +223,8 @@ const countEl = document.getElementById('count');
 const actorChipZone = document.getElementById('actor-chip-zone');
 const searchEl = document.getElementById('search');
 const genreFilterEl = document.getElementById('filter-genre');
+const plateformeFilterEl = document.getElementById('filter-plateforme');
+const dureeFilterEl = document.getElementById('filter-duree');
 const statusFilterEl = document.getElementById('filter-status');
 const sortEl = document.getElementById('sort');
 
@@ -222,6 +237,8 @@ async function loadFilms() {
   const params = new URLSearchParams();
   if (searchEl.value.trim()) params.set('search', searchEl.value.trim());
   if (genreFilterEl.value) params.set('genre', genreFilterEl.value);
+  if (plateformeFilterEl.value) params.set('plateforme', plateformeFilterEl.value);
+  if (dureeFilterEl.value) params.set('duree_max', dureeFilterEl.value);
   if (statusFilterEl.value) params.set('statut', statusFilterEl.value);
   if (activeActor) params.set('acteur', activeActor);
   params.set('sort', sortEl.value);
@@ -260,6 +277,15 @@ async function loadGenres() {
   genreFilterEl.value = current;
 }
 
+async function loadPlateformes() {
+  const res = await fetch(`${API}/api/meta/plateformes`);
+  const plateformes = await res.json();
+  const current = plateformeFilterEl.value;
+  plateformeFilterEl.innerHTML = '<option value="">Toutes plateformes</option>' +
+    plateformes.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+  plateformeFilterEl.value = current;
+}
+
 function render() {
   countEl.textContent = `${films.length} film${films.length > 1 ? 's' : ''} affiche${films.length > 1 ? 's' : ''}`;
 
@@ -274,6 +300,8 @@ function render() {
     const posterHtml = f.poster_url
       ? `<img class="poster" src="${escapeHtml(f.poster_url)}" alt="" />`
       : `<div class="poster-placeholder">${escapeHtml((f.titre || '?').slice(0,1))}</div>`;
+    const dureeLabel = f.duree_minutes ? `${Math.floor(f.duree_minutes / 60)}h${String(f.duree_minutes % 60).padStart(2, '0')}` : null;
+    const synopsisId = `syn-${f.id}`;
     return `
       <div class="ticket ${f.statut === 'vu' ? 'vu' : ''}">
         ${posterHtml}
@@ -283,8 +311,14 @@ function render() {
           <div class="tags">
             ${genres.map(g => `<span class="tag genre">${escapeHtml(g)}</span>`).join('')}
             ${acteurs.slice(0, 3).map(a => `<span class="tag actor" data-actor="${escapeHtml(a)}">${escapeHtml(a)}</span>`).join('')}
+            ${dureeLabel ? `<span class="tag duree">${dureeLabel}</span>` : ''}
+            ${f.note_tmdb ? `<span class="tag note-tmdb">TMDb ${f.note_tmdb}</span>` : ''}
           </div>
           ${f.statut === 'vu' && f.commentaire ? `<div class="comment">${escapeHtml(f.commentaire)}</div>` : ''}
+          ${f.synopsis ? `
+            <button class="synopsis-toggle" data-toggle-synopsis="${synopsisId}">Synopsis</button>
+            <div class="synopsis-text" id="${synopsisId}">${escapeHtml(f.synopsis)}</div>
+          ` : ''}
         </div>
         <div class="ticket-stub">
           ${f.note !== null && f.note !== undefined ? `<div class="note">${f.note}</div>` : `<div class="note empty">--</div>`}
@@ -308,6 +342,14 @@ function render() {
 
   grid.querySelectorAll('.tag.actor').forEach(tag => {
     tag.onclick = () => filterByActor(tag.getAttribute('data-actor'));
+  });
+
+  grid.querySelectorAll('[data-toggle-synopsis]').forEach(btn => {
+    btn.onclick = () => {
+      const el = document.getElementById(btn.getAttribute('data-toggle-synopsis'));
+      el.classList.toggle('open');
+      btn.textContent = el.classList.contains('open') ? 'Masquer le synopsis' : 'Synopsis';
+    };
   });
 }
 
@@ -334,7 +376,7 @@ function openModal(existing) {
   tmdbSelection = existing ? {
     tmdb_id: existing.tmdb_id, poster_url: existing.poster_url,
   } : null;
-  const f = existing || { titre: '', annee: '', genres: '', acteurs: '', realisateur: '', plateforme: '', note: '', statut: 'avoir', commentaire: '' };
+  const f = existing || { titre: '', annee: '', genres: '', acteurs: '', realisateur: '', plateforme: '', note: '', statut: 'avoir', commentaire: '', duree_minutes: '', synopsis: '', note_tmdb: '' };
 
   modalRoot.innerHTML = `
     <div class="modal-backdrop" id="modal-backdrop">
@@ -360,7 +402,7 @@ function openModal(existing) {
           <div>
             <label>Plateforme</label>
             <input type="text" id="f-plateforme" value="${escapeHtml(f.plateforme)}" placeholder="Netflix, Cinema..." />
-            ${existing && existing.tmdb_id ? `<button type="button" id="refresh-providers-btn" style="margin-top:6px;background:none;border:1px solid var(--line);color:var(--ink-faint);font-size:10.5px;padding:4px 8px;border-radius:6px;cursor:pointer;font-family:'IBM Plex Mono',monospace;">Actualiser plateformes FR</button>` : ''}
+            ${existing && existing.tmdb_id ? `<button type="button" id="refresh-providers-btn" style="margin-top:6px;background:none;border:1px solid var(--line);color:var(--ink-faint);font-size:10.5px;padding:4px 8px;border-radius:6px;cursor:pointer;font-family:'IBM Plex Mono',monospace;">Actualiser fiche TMDb</button>` : ''}
           </div>
           <div class="full">
             <label>Genres (separes par virgule)</label>
@@ -375,6 +417,10 @@ function openModal(existing) {
             <input type="text" id="f-real" value="${escapeHtml(f.realisateur)}" />
           </div>
           <div>
+            <label>Duree (minutes)</label>
+            <input type="text" id="f-duree" value="${escapeHtml(f.duree_minutes || '')}" placeholder="170" />
+          </div>
+          <div>
             <label>Statut</label>
             <select id="f-statut">
               <option value="avoir" ${f.statut === 'avoir' ? 'selected' : ''}>A voir</option>
@@ -384,6 +430,14 @@ function openModal(existing) {
           <div>
             <label>Note /10 (si vu)</label>
             <input type="text" id="f-note" value="${escapeHtml(f.note != null ? f.note : '')}" placeholder="8.5" />
+          </div>
+          <div>
+            <label>Note TMDb (communaute)</label>
+            <input type="text" id="f-note-tmdb" value="${escapeHtml(f.note_tmdb != null ? f.note_tmdb : '')}" placeholder="7.8" />
+          </div>
+          <div class="full">
+            <label>Synopsis</label>
+            <textarea id="f-synopsis" placeholder="Resume du film...">${escapeHtml(f.synopsis || '')}</textarea>
           </div>
           <div class="full">
             <label>Commentaire (si vu)</label>
@@ -407,13 +461,18 @@ function openModal(existing) {
     refreshBtn.onclick = async () => {
       refreshBtn.textContent = 'Chargement...';
       try {
-        const res = await fetch(`${API}/api/tmdb/providers/${existing.tmdb_id}`);
-        const providers = await res.json();
-        if (res.ok && providers.length > 0) {
-          document.getElementById('f-plateforme').value = providers.join(', ');
-          refreshBtn.textContent = 'Actualise';
+        const res = await fetch(`${API}/api/tmdb/movie/${existing.tmdb_id}`);
+        const d = await res.json();
+        if (res.ok) {
+          if (d.plateformes_fr && d.plateformes_fr.length > 0) {
+            document.getElementById('f-plateforme').value = d.plateformes_fr.join(', ');
+          }
+          document.getElementById('f-duree').value = d.duree_minutes || '';
+          document.getElementById('f-synopsis').value = d.synopsis || '';
+          document.getElementById('f-note-tmdb').value = d.note_tmdb != null ? d.note_tmdb : '';
+          refreshBtn.textContent = 'Fiche actualisee';
         } else {
-          refreshBtn.textContent = 'Aucune plateforme FR trouvee';
+          refreshBtn.textContent = 'Erreur TMDb';
         }
       } catch (err) {
         refreshBtn.textContent = 'Erreur TMDb';
@@ -479,6 +538,9 @@ async function selectTmdbMovie(tmdbId) {
     document.getElementById('f-genres').value = d.genres || '';
     document.getElementById('f-acteurs').value = d.acteurs || '';
     document.getElementById('f-real').value = d.realisateur || '';
+    document.getElementById('f-duree').value = d.duree_minutes || '';
+    document.getElementById('f-synopsis').value = d.synopsis || '';
+    document.getElementById('f-note-tmdb').value = d.note_tmdb != null ? d.note_tmdb : '';
     if (d.plateformes_fr && d.plateformes_fr.length > 0) {
       document.getElementById('f-plateforme').value = d.plateformes_fr.join(', ');
     }
@@ -496,6 +558,8 @@ async function onSaveModal() {
   const titre = document.getElementById('f-titre').value.trim();
   if (!titre) return;
   const noteRaw = document.getElementById('f-note').value.trim();
+  const noteTmdbRaw = document.getElementById('f-note-tmdb').value.trim();
+  const dureeRaw = document.getElementById('f-duree').value.trim();
   const payload = {
     titre,
     annee: parseInt(document.getElementById('f-annee').value, 10) || null,
@@ -506,6 +570,9 @@ async function onSaveModal() {
     statut: document.getElementById('f-statut').value,
     note: noteRaw ? parseFloat(noteRaw) : null,
     commentaire: document.getElementById('f-commentaire').value.trim(),
+    duree_minutes: dureeRaw ? parseInt(dureeRaw, 10) : null,
+    synopsis: document.getElementById('f-synopsis').value.trim(),
+    note_tmdb: noteTmdbRaw ? parseFloat(noteTmdbRaw) : null,
   };
   if (tmdbSelection) {
     payload.tmdb_id = tmdbSelection.tmdb_id;
@@ -551,6 +618,8 @@ async function drawRoulette() {
 
   const params = new URLSearchParams();
   if (genreFilterEl.value) params.set('genre', genreFilterEl.value);
+  if (plateformeFilterEl.value) params.set('plateforme', plateformeFilterEl.value);
+  if (dureeFilterEl.value) params.set('duree_max', dureeFilterEl.value);
 
   const res = await fetch(`${API}/api/films/random?${params.toString()}`);
   if (!res.ok) {
@@ -567,11 +636,13 @@ async function drawRoulette() {
   }
   const f = await res.json();
   const genres = splitTags(f.genres);
+  const dureeLabel = f.duree_minutes ? `${Math.floor(f.duree_minutes / 60)}h${String(f.duree_minutes % 60).padStart(2, '0')}` : null;
   card.innerHTML = `
     <div class="roulette-eyebrow">SEANCE SURPRISE</div>
     ${f.poster_url ? `<img class="roulette-poster" src="${escapeHtml(f.poster_url)}" alt="" />` : ''}
     <div class="roulette-title">${escapeHtml(f.titre)}</div>
-    <div class="roulette-meta">${escapeHtml(f.realisateur || '')}${genres.length ? ' &middot; ' + genres.join(', ') : ''}</div>
+    <div class="roulette-meta">${escapeHtml(f.realisateur || '')}${genres.length ? ' &middot; ' + genres.join(', ') : ''}${dureeLabel ? ' &middot; ' + dureeLabel : ''}${f.plateforme ? ' &middot; ' + escapeHtml(f.plateforme) : ''}</div>
+    ${f.synopsis ? `<div style="font-size:12.5px;color:var(--ink-dim);text-align:left;margin-bottom:14px;line-height:1.4;">${escapeHtml(f.synopsis)}</div>` : ''}
     <div class="roulette-actions">
       <button class="btn-cancel" id="roulette-again">Une autre</button>
       <button class="statusbtn vu-active" style="width:auto;padding:9px 16px;" id="roulette-watch">Marquer vu</button>
@@ -593,6 +664,8 @@ document.getElementById('exportbtn').onclick = () => { window.location.href = `$
 let debounce;
 searchEl.oninput = () => { clearTimeout(debounce); debounce = setTimeout(loadFilms, 250); };
 genreFilterEl.onchange = loadFilms;
+plateformeFilterEl.onchange = loadFilms;
+dureeFilterEl.onchange = loadFilms;
 statusFilterEl.onchange = loadFilms;
 sortEl.onchange = loadFilms;
 
@@ -663,6 +736,7 @@ function closeStats() {
 
 loadFilms();
 loadGenres();
+loadPlateformes();
 </script>
 </body>
 </html>

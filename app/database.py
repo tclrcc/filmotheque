@@ -24,11 +24,22 @@ CREATE TABLE IF NOT EXISTS films (
 CREATE INDEX IF NOT EXISTS idx_films_statut ON films(statut);
 """
 
+# Colonnes ajoutees apres la version initiale : (nom, definition SQL)
+MIGRATIONS = [
+    ("duree_minutes", "INTEGER"),
+    ("synopsis", "TEXT DEFAULT ''"),
+    ("note_tmdb", "REAL"),
+]
+
 
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+        existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(films)")}
+        for col_name, col_def in MIGRATIONS:
+            if col_name not in existing_cols:
+                conn.execute(f"ALTER TABLE films ADD COLUMN {col_name} {col_def}")
 
 
 @contextmanager
