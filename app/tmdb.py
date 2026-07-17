@@ -70,6 +70,7 @@ async def get_movie_details(tmdb_id: int) -> dict:
         plateformes_fr = []
 
     vote_average = detail.get("vote_average")
+    pays = ", ".join(c["name"] for c in detail.get("production_countries", [])[:2])
 
     return {
         "tmdb_id": tmdb_id,
@@ -83,7 +84,41 @@ async def get_movie_details(tmdb_id: int) -> dict:
         "duree_minutes": detail.get("runtime") or None,
         "synopsis": detail.get("overview") or "",
         "note_tmdb": round(vote_average, 1) if vote_average else None,
+        "pays": pays,
     }
+
+
+async def get_trailer_url(tmdb_id: int) -> str | None:
+    """URL YouTube de la bande-annonce officielle, si disponible."""
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        resp = await client.get(
+            f"{TMDB_BASE}/movie/{tmdb_id}/videos",
+            params={"api_key": _api_key(), "language": "fr-FR"},
+        )
+        resp.raise_for_status()
+        videos = resp.json().get("results", [])
+
+        # Si rien en francais, on retente en anglais (souvent plus complet)
+        if not videos:
+            resp_en = await client.get(
+                f"{TMDB_BASE}/movie/{tmdb_id}/videos",
+                params={"api_key": _api_key(), "language": "en-US"},
+            )
+            resp_en.raise_for_status()
+            videos = resp_en.json().get("results", [])
+
+    def score(v):
+        return (
+            v.get("site") == "YouTube",
+            v.get("type") == "Trailer",
+            v.get("official", False),
+        )
+
+    youtube_videos = [v for v in videos if v.get("site") == "YouTube"]
+    if not youtube_videos:
+        return None
+    best = max(youtube_videos, key=score)
+    return f"https://www.youtube.com/watch?v={best['key']}"
 
 
 async def get_watch_providers_fr(tmdb_id: int) -> list[str]:
@@ -162,6 +197,9 @@ async def discover_movies(
     duree_min: int | None = None,
     duree_max: int | None = None,
     note_min: float | None = None,
+    origin_country: str | None = None,
+    annee_min: int | None = None,
+    annee_max: int | None = None,
     sort_by: str = "popularity.desc",
     page: int = 1,
 ) -> dict:
@@ -186,6 +224,12 @@ async def discover_movies(
         params["with_runtime.lte"] = duree_max
     if note_min:
         params["vote_average.gte"] = note_min
+    if origin_country:
+        params["with_origin_country"] = origin_country
+    if annee_min:
+        params["primary_release_date.gte"] = f"{annee_min}-01-01"
+    if annee_max:
+        params["primary_release_date.lte"] = f"{annee_max}-12-31"
 
     async with httpx.AsyncClient(timeout=8.0) as client:
         resp = await client.get(f"{TMDB_BASE}/discover/movie", params=params)

@@ -204,11 +204,19 @@
     <input type="text" id="search" placeholder="Chercher un titre, un acteur, un realisateur..." />
     <select id="filter-genre"><option value="">Tous genres</option></select>
     <select id="filter-plateforme"><option value="">Toutes plateformes</option></select>
+    <select id="filter-pays"><option value="">Tous pays</option></select>
     <select id="filter-duree">
       <option value="">Toutes durees</option>
       <option value="90">&le; 1h30</option>
       <option value="110">&le; 1h50</option>
       <option value="130">&le; 2h10</option>
+    </select>
+    <select id="filter-annee">
+      <option value="">Toutes annees</option>
+      <option value="2009">&lt; 2010</option>
+      <option value="1999">&lt; 2000</option>
+      <option value="1989">&lt; 1990</option>
+      <option value="1979">&lt; 1980</option>
     </select>
     <select id="filter-status">
       <option value="">Tous statuts</option>
@@ -259,7 +267,9 @@ const actorChipZone = document.getElementById('actor-chip-zone');
 const searchEl = document.getElementById('search');
 const genreFilterEl = document.getElementById('filter-genre');
 const plateformeFilterEl = document.getElementById('filter-plateforme');
+const paysFilterEl = document.getElementById('filter-pays');
 const dureeFilterEl = document.getElementById('filter-duree');
+const anneeFilterEl = document.getElementById('filter-annee');
 const statusFilterEl = document.getElementById('filter-status');
 const sortEl = document.getElementById('sort');
 
@@ -273,7 +283,9 @@ async function loadFilms() {
   if (searchEl.value.trim()) params.set('search', searchEl.value.trim());
   if (genreFilterEl.value) params.set('genre', genreFilterEl.value);
   if (plateformeFilterEl.value) params.set('plateforme', plateformeFilterEl.value);
+  if (paysFilterEl.value) params.set('pays', paysFilterEl.value);
   if (dureeFilterEl.value) params.set('duree_max', dureeFilterEl.value);
+  if (anneeFilterEl.value) params.set('annee_max', anneeFilterEl.value);
   if (statusFilterEl.value) params.set('statut', statusFilterEl.value);
   if (activeActor) params.set('acteur', activeActor);
   params.set('sort', sortEl.value);
@@ -321,6 +333,15 @@ async function loadPlateformes() {
   plateformeFilterEl.value = current;
 }
 
+async function loadPays() {
+  const res = await fetch(`${API}/api/meta/pays`);
+  const pays = await res.json();
+  const current = paysFilterEl.value;
+  paysFilterEl.innerHTML = '<option value="">Tous pays</option>' +
+    pays.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+  paysFilterEl.value = current;
+}
+
 function render() {
   countEl.textContent = `${films.length} film${films.length > 1 ? 's' : ''} affiche${films.length > 1 ? 's' : ''}`;
 
@@ -348,6 +369,7 @@ function render() {
             ${acteurs.slice(0, 3).map(a => `<span class="tag actor" data-actor="${escapeHtml(a)}">${escapeHtml(a)}</span>`).join('')}
             ${dureeLabel ? `<span class="tag duree">${dureeLabel}</span>` : ''}
             ${f.note_tmdb ? `<span class="tag note-tmdb">TMDb ${f.note_tmdb}</span>` : ''}
+            ${f.pays ? `<span class="tag duree">${escapeHtml(f.pays)}</span>` : ''}
           </div>
           ${f.statut === 'vu' && f.commentaire ? `<div class="comment">${escapeHtml(f.commentaire)}</div>` : ''}
           ${f.synopsis ? `
@@ -360,6 +382,7 @@ function render() {
           <button class="statusbtn ${f.statut === 'vu' ? 'vu-active' : ''}" data-action="toggle" data-id="${f.id}">${f.statut === 'vu' ? 'VU' : 'A VOIR'}</button>
           <button class="statusbtn" data-action="edit" data-id="${f.id}">Editer</button>
           ${f.tmdb_id ? `<button class="statusbtn" data-action="similar" data-tmdb-id="${f.tmdb_id}" data-titre="${escapeHtml(f.titre)}">Similaires</button>` : ''}
+          ${f.tmdb_id ? `<button class="statusbtn" data-action="trailer" data-tmdb-id="${f.tmdb_id}">Bande-annonce</button>` : ''}
           <button class="delbtn" data-action="delete" data-id="${f.id}">&times;</button>
         </div>
       </div>
@@ -374,6 +397,7 @@ function render() {
       else if (action === 'delete') deleteFilm(id);
       else if (action === 'edit') openModal(films.find(f => f.id === id));
       else if (action === 'similar') openDiscover({ mode: 'similar', tmdbId: parseInt(btn.getAttribute('data-tmdb-id'), 10), sourceTitre: btn.getAttribute('data-titre') });
+      else if (action === 'trailer') openTrailer(parseInt(btn.getAttribute('data-tmdb-id'), 10), btn);
     };
   });
 
@@ -413,7 +437,7 @@ function openModal(existing) {
   tmdbSelection = existing ? {
     tmdb_id: existing.tmdb_id, poster_url: existing.poster_url,
   } : null;
-  const f = existing || { titre: '', annee: '', genres: '', acteurs: '', realisateur: '', plateforme: '', note: '', statut: 'avoir', commentaire: '', duree_minutes: '', synopsis: '', note_tmdb: '' };
+  const f = existing || { titre: '', annee: '', genres: '', acteurs: '', realisateur: '', plateforme: '', note: '', statut: 'avoir', commentaire: '', duree_minutes: '', synopsis: '', note_tmdb: '', pays: '' };
 
   modalRoot.innerHTML = `
     <div class="modal-backdrop" id="modal-backdrop">
@@ -456,6 +480,10 @@ function openModal(existing) {
           <div>
             <label>Duree (minutes)</label>
             <input type="text" id="f-duree" value="${escapeHtml(f.duree_minutes || '')}" placeholder="170" />
+          </div>
+          <div>
+            <label>Pays</label>
+            <input type="text" id="f-pays" value="${escapeHtml(f.pays || '')}" placeholder="France, Etats-Unis..." />
           </div>
           <div>
             <label>Statut</label>
@@ -507,6 +535,7 @@ function openModal(existing) {
           document.getElementById('f-duree').value = d.duree_minutes || '';
           document.getElementById('f-synopsis').value = d.synopsis || '';
           document.getElementById('f-note-tmdb').value = d.note_tmdb != null ? d.note_tmdb : '';
+          document.getElementById('f-pays').value = d.pays || '';
           refreshBtn.textContent = 'Fiche actualisee';
         } else {
           refreshBtn.textContent = 'Erreur TMDb';
@@ -578,6 +607,7 @@ async function selectTmdbMovie(tmdbId) {
     document.getElementById('f-duree').value = d.duree_minutes || '';
     document.getElementById('f-synopsis').value = d.synopsis || '';
     document.getElementById('f-note-tmdb').value = d.note_tmdb != null ? d.note_tmdb : '';
+    document.getElementById('f-pays').value = d.pays || '';
     if (d.plateformes_fr && d.plateformes_fr.length > 0) {
       document.getElementById('f-plateforme').value = d.plateformes_fr.join(', ');
     }
@@ -610,6 +640,7 @@ async function onSaveModal() {
     duree_minutes: dureeRaw ? parseInt(dureeRaw, 10) : null,
     synopsis: document.getElementById('f-synopsis').value.trim(),
     note_tmdb: noteTmdbRaw ? parseFloat(noteTmdbRaw) : null,
+    pays: document.getElementById('f-pays').value.trim(),
   };
   if (tmdbSelection) {
     payload.tmdb_id = tmdbSelection.tmdb_id;
@@ -657,6 +688,8 @@ async function drawRoulette() {
   if (genreFilterEl.value) params.set('genre', genreFilterEl.value);
   if (plateformeFilterEl.value) params.set('plateforme', plateformeFilterEl.value);
   if (dureeFilterEl.value) params.set('duree_max', dureeFilterEl.value);
+  if (paysFilterEl.value) params.set('pays', paysFilterEl.value);
+  if (anneeFilterEl.value) params.set('annee_max', anneeFilterEl.value);
 
   const res = await fetch(`${API}/api/films/random?${params.toString()}`);
   if (!res.ok) {
@@ -682,12 +715,15 @@ async function drawRoulette() {
     ${f.synopsis ? `<div style="font-size:12.5px;color:var(--ink-dim);text-align:left;margin-bottom:14px;line-height:1.4;">${escapeHtml(f.synopsis)}</div>` : ''}
     <div class="roulette-actions">
       <button class="btn-cancel" id="roulette-again">Une autre</button>
+      ${f.tmdb_id ? `<button class="btn-cancel" id="roulette-trailer">Bande-annonce</button>` : ''}
       <button class="statusbtn vu-active" style="width:auto;padding:9px 16px;" id="roulette-watch">Marquer vu</button>
       <button class="btn-save" id="roulette-close">Fermer</button>
     </div>
   `;
   document.getElementById('roulette-again').onclick = drawRoulette;
   document.getElementById('roulette-close').onclick = closeRoulette;
+  const trailerBtn = document.getElementById('roulette-trailer');
+  if (trailerBtn) trailerBtn.onclick = () => openTrailer(f.tmdb_id, trailerBtn);
   document.getElementById('roulette-watch').onclick = async () => {
     await toggleStatus(f.id);
     closeRoulette();
@@ -703,7 +739,9 @@ let debounce;
 searchEl.oninput = () => { clearTimeout(debounce); debounce = setTimeout(loadFilms, 250); };
 genreFilterEl.onchange = loadFilms;
 plateformeFilterEl.onchange = loadFilms;
+paysFilterEl.onchange = loadFilms;
 dureeFilterEl.onchange = loadFilms;
+anneeFilterEl.onchange = loadFilms;
 statusFilterEl.onchange = loadFilms;
 sortEl.onchange = loadFilms;
 
@@ -760,11 +798,29 @@ async function openDiscover(opts) {
         <select id="disc-provider"><option value="">Toutes plateformes</option>
           ${tmdbProviderCache.map(p => `<option value="${p.provider_id}">${escapeHtml(p.provider_name)}</option>`).join('')}
         </select>
+        <select id="disc-pays">
+          <option value="">Tous pays</option>
+          <option value="FR">France</option>
+          <option value="US">Etats-Unis</option>
+          <option value="GB">Royaume-Uni</option>
+          <option value="KR">Coree du Sud</option>
+          <option value="JP">Japon</option>
+          <option value="IT">Italie</option>
+          <option value="ES">Espagne</option>
+          <option value="DE">Allemagne</option>
+        </select>
         <select id="disc-duree">
           <option value="">Toutes durees</option>
           <option value="90">&le; 1h30</option>
           <option value="110">&le; 1h50</option>
           <option value="130">&le; 2h10</option>
+        </select>
+        <select id="disc-annee">
+          <option value="">Toutes annees</option>
+          <option value="2009">&lt; 2010</option>
+          <option value="1999">&lt; 2000</option>
+          <option value="1989">&lt; 1990</option>
+          <option value="1979">&lt; 1980</option>
         </select>
         <select id="disc-note">
           <option value="">Toutes notes</option>
@@ -779,7 +835,7 @@ async function openDiscover(opts) {
         </select>
       </div>
     `;
-    ['disc-genre', 'disc-provider', 'disc-duree', 'disc-note', 'disc-sort'].forEach(id => {
+    ['disc-genre', 'disc-provider', 'disc-pays', 'disc-duree', 'disc-annee', 'disc-note', 'disc-sort'].forEach(id => {
       document.getElementById(id).onchange = () => runDiscover(1);
     });
   } else {
@@ -806,11 +862,15 @@ async function runDiscover(page) {
     const params = new URLSearchParams({ sort_by: document.getElementById('disc-sort').value, page });
     const genreVal = document.getElementById('disc-genre').value;
     const providerVal = document.getElementById('disc-provider').value;
+    const paysVal = document.getElementById('disc-pays').value;
     const dureeVal = document.getElementById('disc-duree').value;
+    const anneeVal = document.getElementById('disc-annee').value;
     const noteVal = document.getElementById('disc-note').value;
     if (genreVal) params.set('genre_id', genreVal);
     if (providerVal) params.set('provider_id', providerVal);
+    if (paysVal) params.set('origin_country', paysVal);
     if (dureeVal) params.set('duree_max', dureeVal);
+    if (anneeVal) params.set('annee_max', anneeVal);
     if (noteVal) params.set('note_min', noteVal);
     url = `${API}/api/tmdb/discover?${params.toString()}`;
   }
@@ -848,7 +908,10 @@ async function runDiscover(page) {
           <div class="discover-card-title">${escapeHtml(r.titre)}</div>
           <div class="discover-card-meta">${r.annee || ''}${genreNames.length ? ' &middot; ' + genreNames.join(', ') : ''}${r.note_tmdb ? ' &middot; ' + r.note_tmdb + '/10' : ''}</div>
           <div class="discover-card-synopsis">${escapeHtml(r.synopsis || 'Pas de synopsis disponible.')}</div>
-          <button class="discover-add-btn" data-add-tmdb="${r.tmdb_id}" ${already ? 'disabled' : ''}>${already ? 'Ajoute' : '+ Ajouter a ma liste'}</button>
+          <div style="display:flex;gap:6px;">
+            <button class="discover-add-btn" data-add-tmdb="${r.tmdb_id}" ${already ? 'disabled' : ''}>${already ? 'Ajoute' : '+ Ajouter'}</button>
+            <button class="discover-add-btn" style="background:none;border:1px solid var(--line);color:var(--ink-dim);" data-trailer-tmdb="${r.tmdb_id}">BA</button>
+          </div>
         </div>
       </div>
     `;
@@ -858,11 +921,37 @@ async function runDiscover(page) {
     btn.onclick = () => addFromDiscover(parseInt(btn.getAttribute('data-add-tmdb'), 10), btn);
   });
 
+  gridEl.querySelectorAll('[data-trailer-tmdb]').forEach(btn => {
+    btn.onclick = () => openTrailer(parseInt(btn.getAttribute('data-trailer-tmdb'), 10), btn);
+  });
+
   moreZone.innerHTML = data.page < data.total_pages
     ? `<button class="discover-more" id="discover-load-more">Charger plus</button>`
     : '';
   const moreBtn = document.getElementById('discover-load-more');
   if (moreBtn) moreBtn.onclick = () => runDiscover(discoverState.page + 1);
+}
+
+async function openTrailer(tmdbId, btn) {
+  const original = btn.textContent;
+  btn.textContent = 'Recherche...';
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API}/api/tmdb/trailer/${tmdbId}`);
+    if (!res.ok) {
+      const err = await res.json();
+      btn.textContent = err.detail && err.detail.includes('Aucune') ? 'Pas de BA trouvee' : 'Erreur';
+      setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 2000);
+      return;
+    }
+    const d = await res.json();
+    window.open(d.youtube_url, '_blank', 'noopener');
+    btn.textContent = original;
+    btn.disabled = false;
+  } catch (e) {
+    btn.textContent = 'Erreur';
+    setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 2000);
+  }
 }
 
 async function addFromDiscover(tmdbId, btn) {
@@ -876,7 +965,7 @@ async function addFromDiscover(tmdbId, btn) {
       genres: d.genres || '', acteurs: d.acteurs || '', realisateur: d.realisateur || '',
       plateforme: d.plateformes_fr && d.plateformes_fr.length ? d.plateformes_fr.join(', ') : '',
       poster_url: d.poster_url, statut: 'avoir', duree_minutes: d.duree_minutes,
-      synopsis: d.synopsis || '', note_tmdb: d.note_tmdb,
+      synopsis: d.synopsis || '', note_tmdb: d.note_tmdb, pays: d.pays || '',
     };
     await fetch(`${API}/api/films`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     discoverState.addedIds.add(tmdbId);
@@ -884,6 +973,7 @@ async function addFromDiscover(tmdbId, btn) {
     await loadFilms();
     await loadGenres();
     await loadPlateformes();
+    await loadPays();
   } catch (e) {
     btn.textContent = 'Erreur';
     btn.disabled = false;
@@ -958,6 +1048,7 @@ function closeStats() {
 loadFilms();
 loadGenres();
 loadPlateformes();
+loadPays();
 </script>
 </body>
 </html>

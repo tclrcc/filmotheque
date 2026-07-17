@@ -29,6 +29,7 @@ MIGRATIONS = [
     ("duree_minutes", "INTEGER"),
     ("synopsis", "TEXT DEFAULT ''"),
     ("note_tmdb", "REAL"),
+    ("pays", "TEXT DEFAULT ''"),
 ]
 
 

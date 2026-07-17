@@ -43,7 +43,10 @@ def list_films(
     genre: str | None = None,
     acteur: str | None = None,
     plateforme: str | None = None,
+    pays: str | None = None,
     duree_max: int | None = None,
+    annee_min: int | None = None,
+    annee_max: int | None = None,
     search: str | None = None,
     sort: str = Query(default="recent", pattern="^(recent|note|titre)$"),
 ):
@@ -62,9 +65,18 @@ def list_films(
     if plateforme:
         query += " AND plateforme LIKE ?"
         params.append(f"%{plateforme}%")
+    if pays:
+        query += " AND pays LIKE ?"
+        params.append(f"%{pays}%")
     if duree_max:
         query += " AND duree_minutes IS NOT NULL AND duree_minutes <= ?"
         params.append(duree_max)
+    if annee_min:
+        query += " AND annee IS NOT NULL AND annee >= ?"
+        params.append(annee_min)
+    if annee_max:
+        query += " AND annee IS NOT NULL AND annee <= ?"
+        params.append(annee_max)
     if search:
         query += " AND (titre LIKE ? OR acteurs LIKE ? OR realisateur LIKE ?)"
         like = f"%{search}%"
@@ -91,12 +103,12 @@ def create_film(film: FilmIn):
             """INSERT INTO films
                (titre, tmdb_id, annee, genres, acteurs, realisateur, plateforme,
                 poster_url, statut, note, commentaire, date_ajout, date_vu,
-                duree_minutes, synopsis, note_tmdb)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                duree_minutes, synopsis, note_tmdb, pays)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (film.titre, film.tmdb_id, film.annee, film.genres, film.acteurs,
              film.realisateur, film.plateforme, film.poster_url, film.statut,
              film.note, film.commentaire, now, date_vu,
-             film.duree_minutes, film.synopsis, film.note_tmdb),
+             film.duree_minutes, film.synopsis, film.note_tmdb, film.pays),
         )
         new_id = cur.lastrowid
         row = conn.execute("SELECT * FROM films WHERE id = ?", (new_id,)).fetchone()
@@ -138,7 +150,14 @@ def delete_film(film_id: int):
 
 
 @app.get("/api/films/random", response_model=FilmOut)
-def random_film(genre: str | None = None, plateforme: str | None = None, duree_max: int | None = None):
+def random_film(
+    genre: str | None = None,
+    plateforme: str | None = None,
+    duree_max: int | None = None,
+    pays: str | None = None,
+    annee_min: int | None = None,
+    annee_max: int | None = None,
+):
     query = "SELECT * FROM films WHERE statut = 'avoir'"
     params: list = []
     if genre:
@@ -150,6 +169,15 @@ def random_film(genre: str | None = None, plateforme: str | None = None, duree_m
     if duree_max:
         query += " AND duree_minutes IS NOT NULL AND duree_minutes <= ?"
         params.append(duree_max)
+    if pays:
+        query += " AND pays LIKE ?"
+        params.append(f"%{pays}%")
+    if annee_min:
+        query += " AND annee IS NOT NULL AND annee >= ?"
+        params.append(annee_min)
+    if annee_max:
+        query += " AND annee IS NOT NULL AND annee <= ?"
+        params.append(annee_max)
     query += " ORDER BY RANDOM() LIMIT 1"
 
     with get_conn() as conn:
@@ -259,6 +287,19 @@ def list_plateformes():
     return sorted(plateformes)
 
 
+@app.get("/api/meta/pays")
+def list_pays():
+    with get_conn() as conn:
+        rows = conn.execute("SELECT pays FROM films WHERE pays != ''").fetchall()
+    pays_set = set()
+    for row in rows:
+        for p in row["pays"].split(","):
+            p = p.strip()
+            if p:
+                pays_set.add(p)
+    return sorted(pays_set)
+
+
 @app.get("/api/tmdb/search")
 async def tmdb_search(q: str = Query(min_length=2)):
     try:
@@ -309,6 +350,19 @@ async def tmdb_watch_providers():
         raise HTTPException(502, f"Erreur TMDb: {e}")
 
 
+@app.get("/api/tmdb/trailer/{tmdb_id}")
+async def tmdb_trailer(tmdb_id: int):
+    try:
+        url = await tmdb.get_trailer_url(tmdb_id)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Erreur TMDb: {e}")
+    if not url:
+        raise HTTPException(404, "Aucune bande-annonce trouvee sur TMDb")
+    return {"youtube_url": url}
+
+
 @app.get("/api/tmdb/discover")
 async def tmdb_discover(
     genre_id: int | None = None,
@@ -316,13 +370,17 @@ async def tmdb_discover(
     duree_min: int | None = None,
     duree_max: int | None = None,
     note_min: float | None = None,
+    origin_country: str | None = None,
+    annee_min: int | None = None,
+    annee_max: int | None = None,
     sort_by: str = "popularity.desc",
     page: int = 1,
 ):
     try:
         return await tmdb.discover_movies(
             genre_id=genre_id, provider_id=provider_id, duree_min=duree_min,
-            duree_max=duree_max, note_min=note_min, sort_by=sort_by, page=page,
+            duree_max=duree_max, note_min=note_min, origin_country=origin_country,
+            annee_min=annee_min, annee_max=annee_max, sort_by=sort_by, page=page,
         )
     except RuntimeError as e:
         raise HTTPException(400, str(e))

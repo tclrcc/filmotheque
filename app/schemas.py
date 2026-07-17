@@ -17,6 +17,7 @@ class FilmIn(BaseModel):
     duree_minutes: Optional[int] = None
     synopsis: str = ""
     note_tmdb: Optional[float] = None
+    pays: str = ""
 
 
 class FilmUpdate(BaseModel):
@@ -33,6 +34,7 @@ class FilmUpdate(BaseModel):
     duree_minutes: Optional[int] = None
     synopsis: Optional[str] = None
     note_tmdb: Optional[float] = None
+    pays: Optional[str] = None
 
 
 class FilmOut(FilmIn):
