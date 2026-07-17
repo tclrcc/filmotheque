@@ -193,7 +193,7 @@ async def get_watch_provider_list() -> list[dict]:
 
 async def discover_movies(
     genre_id: int | None = None,
-    provider_id: int | None = None,
+    provider_id: str | None = None,
     duree_min: int | None = None,
     duree_max: int | None = None,
     note_min: float | None = None,
@@ -203,7 +203,11 @@ async def discover_movies(
     sort_by: str = "popularity.desc",
     page: int = 1,
 ) -> dict:
-    """Recherche dans tout le catalogue TMDb selon des criteres, independamment de la watchlist."""
+    """Recherche dans tout le catalogue TMDb selon des criteres, independamment de la watchlist.
+
+    provider_id accepte plusieurs identifiants separes par '|' (syntaxe OR de TMDb),
+    par exemple '8|381' pour Netflix OU Canal+.
+    """
     params = {
         "api_key": _api_key(),
         "language": "fr-FR",

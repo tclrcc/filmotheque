@@ -43,6 +43,28 @@
   .toolbar select { min-width: 130px; }
   .toolbar input:focus, .toolbar select:focus { outline: none; border-color: var(--gold-dim); }
 
+  .ms-wrap { position: relative; }
+  .ms-btn {
+    background: var(--card); border: 1px solid var(--line); color: var(--ink);
+    padding: 9px 12px; border-radius: 8px; font-size: 13px; cursor: pointer;
+    font-family: 'Work Sans', sans-serif; white-space: nowrap; max-width: 180px;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .ms-btn:hover { border-color: var(--gold-dim); }
+  .ms-panel {
+    position: absolute; top: 100%; left: 0; margin-top: 4px; background: var(--void);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px; z-index: 30;
+    min-width: 200px; max-height: 240px; overflow-y: auto; display: none;
+  }
+  .ms-panel.open { display: block; }
+  .ms-item {
+    display: flex; align-items: center; gap: 8px; padding: 6px 6px; font-size: 12.5px;
+    cursor: pointer; border-radius: 5px; color: var(--ink);
+  }
+  .ms-item:hover { background: var(--card-hi); }
+  .ms-item input { accent-color: var(--gold); cursor: pointer; }
+  .ms-empty { font-size: 12px; color: var(--ink-faint); padding: 6px; }
+
   .addbtn {
     background: var(--gold); color: #1A1508; border: none; padding: 10px 18px;
     border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; white-space: nowrap;
@@ -67,6 +89,27 @@
     border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; white-space: nowrap;
   }
   .discoverbtn:hover { background: #3A8079; }
+
+  .suggestionsbtn {
+    background: var(--velvet); border: none; color: #fff; padding: 9px 16px;
+    border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  .suggestionsbtn:hover { background: #C24552; }
+
+  .sugg-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: flex; align-items: flex-start; justify-content: center; padding: 3vh 1rem; z-index: 65; overflow-y: auto; }
+  .sugg-panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px; width: 100%; max-width: 900px; }
+  .sugg-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+  .sugg-header h3 { font-size: 24px; color: var(--velvet); }
+  .sugg-close-x { background: none; border: none; color: var(--ink-faint); font-size: 20px; cursor: pointer; }
+  .sugg-section-title { font-size: 14px; color: var(--ink-dim); font-family: 'IBM Plex Mono', monospace; text-transform: uppercase; letter-spacing: 0.05em; margin: 18px 0 10px; }
+  .sugg-message { color: var(--ink-faint); font-size: 13px; padding: 1rem 0; }
+  .sugg-backlog-list { display: flex; flex-direction: column; gap: 8px; }
+  .sugg-backlog-row { display: flex; align-items: center; gap: 12px; background: var(--card-hi); border-radius: 8px; padding: 8px 12px; }
+  .sugg-backlog-row img { width: 40px; height: 60px; object-fit: cover; border-radius: 4px; background: var(--void); flex-shrink: 0; }
+  .sugg-backlog-info { flex: 1; min-width: 0; }
+  .sugg-backlog-title { font-size: 14px; color: var(--ink); }
+  .sugg-backlog-why { font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
+  .sugg-backlog-why b { color: var(--gold); }
 
   .discover-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: flex; align-items: flex-start; justify-content: center; padding: 3vh 1rem; z-index: 65; overflow-y: auto; }
   .discover-panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px; width: 100%; max-width: 900px; }
@@ -203,7 +246,10 @@
   <div class="toolbar">
     <input type="text" id="search" placeholder="Chercher un titre, un acteur, un realisateur..." />
     <select id="filter-genre"><option value="">Tous genres</option></select>
-    <select id="filter-plateforme"><option value="">Toutes plateformes</option></select>
+    <div class="ms-wrap" id="ms-plateforme">
+      <button type="button" class="ms-btn" id="ms-plateforme-btn">Toutes plateformes</button>
+      <div class="ms-panel" id="ms-plateforme-panel"></div>
+    </div>
     <select id="filter-pays"><option value="">Tous pays</option></select>
     <select id="filter-duree">
       <option value="">Toutes durees</option>
@@ -235,6 +281,7 @@
     </select>
     <button class="rouletbtn" id="roulettebtn">Seance surprise</button>
     <button class="discoverbtn" id="discoverbtn">Decouvrir</button>
+    <button class="suggestionsbtn" id="suggestionsbtn">Suggestions</button>
     <button class="statsbtn" id="statsbtn">Statistiques</button>
     <button class="exportbtn" id="exportbtn">Export CSV</button>
     <button class="addbtn" id="addbtn">+ Ajouter un film</button>
@@ -249,6 +296,7 @@
 <div id="roulette-root"></div>
 <div id="stats-root"></div>
 <div id="discover-root"></div>
+<div id="suggestions-root"></div>
 
 <script>
 const API = '';
@@ -263,6 +311,7 @@ const modalRoot = document.getElementById('modal-root');
 const rouletteRoot = document.getElementById('roulette-root');
 const statsRoot = document.getElementById('stats-root');
 const discoverRoot = document.getElementById('discover-root');
+const suggestionsRoot = document.getElementById('suggestions-root');
 const countEl = document.getElementById('count');
 
 let tmdbGenreCache = null;
@@ -271,12 +320,12 @@ let tmdbGenreMap = {};
 const actorChipZone = document.getElementById('actor-chip-zone');
 const searchEl = document.getElementById('search');
 const genreFilterEl = document.getElementById('filter-genre');
-const plateformeFilterEl = document.getElementById('filter-plateforme');
 const paysFilterEl = document.getElementById('filter-pays');
 const dureeFilterEl = document.getElementById('filter-duree');
 const anneeFilterEl = document.getElementById('filter-annee');
 const statusFilterEl = document.getElementById('filter-status');
 const sortEl = document.getElementById('sort');
+let toolbarPlatformMS = null;
 
 function escapeHtml(s) {
   return (s || '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -290,11 +339,65 @@ function parseDureeFilter(value) {
   return {};
 }
 
+function setupMultiSelect(btnId, panelId, fetchOptions, onChange, defaultLabel) {
+  const btn = document.getElementById(btnId);
+  const panel = document.getElementById(panelId);
+  let selected = new Set();
+  let options = [];
+
+  function renderPanel() {
+    panel.innerHTML = options.length
+      ? options.map(o => `
+          <label class="ms-item">
+            <input type="checkbox" value="${escapeHtml(String(o.value))}" ${selected.has(String(o.value)) ? 'checked' : ''} />
+            ${escapeHtml(o.label)}
+          </label>
+        `).join('')
+      : '<div class="ms-empty">Aucune option pour le moment</div>';
+    panel.querySelectorAll('input').forEach(cb => {
+      cb.onchange = () => {
+        if (cb.checked) selected.add(cb.value); else selected.delete(cb.value);
+        updateBtnLabel();
+        onChange([...selected]);
+      };
+    });
+  }
+
+  function updateBtnLabel() {
+    if (selected.size === 0) { btn.textContent = defaultLabel; return; }
+    const labels = options.filter(o => selected.has(String(o.value))).map(o => o.label);
+    btn.textContent = selected.size <= 2 ? labels.join(', ') : `${selected.size} plateformes`;
+  }
+
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    document.querySelectorAll('.ms-panel.open').forEach(p => { if (p !== panel) p.classList.remove('open'); });
+    panel.classList.toggle('open');
+  };
+  document.addEventListener('click', (e) => {
+    if (!panel.contains(e.target) && e.target !== btn) panel.classList.remove('open');
+  });
+
+  return {
+    async loadOptions() {
+      options = await fetchOptions();
+      renderPanel();
+      updateBtnLabel();
+    },
+    getSelected: () => [...selected],
+    reset() {
+      selected = new Set();
+      updateBtnLabel();
+      renderPanel();
+    },
+  };
+}
+
 async function loadFilms() {
   const params = new URLSearchParams();
   if (searchEl.value.trim()) params.set('search', searchEl.value.trim());
   if (genreFilterEl.value) params.set('genre', genreFilterEl.value);
-  if (plateformeFilterEl.value) params.set('plateforme', plateformeFilterEl.value);
+  if (toolbarPlatformMS) toolbarPlatformMS.getSelected().forEach(p => params.append('plateforme', p));
   if (paysFilterEl.value) params.set('pays', paysFilterEl.value);
   const dureeParsed = parseDureeFilter(dureeFilterEl.value);
   if (dureeParsed.duree_max) params.set('duree_max', dureeParsed.duree_max);
@@ -338,13 +441,19 @@ async function loadGenres() {
   genreFilterEl.value = current;
 }
 
-async function loadPlateformes() {
-  const res = await fetch(`${API}/api/meta/plateformes`);
-  const plateformes = await res.json();
-  const current = plateformeFilterEl.value;
-  plateformeFilterEl.innerHTML = '<option value="">Toutes plateformes</option>' +
-    plateformes.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
-  plateformeFilterEl.value = current;
+function initToolbarPlatformMS() {
+  if (toolbarPlatformMS) return toolbarPlatformMS.loadOptions();
+  toolbarPlatformMS = setupMultiSelect(
+    'ms-plateforme-btn', 'ms-plateforme-panel',
+    async () => {
+      const res = await fetch(`${API}/api/meta/plateformes`);
+      const list = res.ok ? await res.json() : [];
+      return list.map(p => ({ value: p, label: p }));
+    },
+    () => loadFilms(),
+    'Toutes plateformes'
+  );
+  return toolbarPlatformMS.loadOptions();
 }
 
 async function loadPays() {
@@ -700,7 +809,7 @@ async function drawRoulette() {
 
   const params = new URLSearchParams();
   if (genreFilterEl.value) params.set('genre', genreFilterEl.value);
-  if (plateformeFilterEl.value) params.set('plateforme', plateformeFilterEl.value);
+  if (toolbarPlatformMS) toolbarPlatformMS.getSelected().forEach(p => params.append('plateforme', p));
   const dureeParsedR = parseDureeFilter(dureeFilterEl.value);
   if (dureeParsedR.duree_max) params.set('duree_max', dureeParsedR.duree_max);
   if (dureeParsedR.duree_min) params.set('duree_min', dureeParsedR.duree_min);
@@ -750,11 +859,11 @@ document.getElementById('addbtn').onclick = () => openModal(null);
 document.getElementById('roulettebtn').onclick = openRoulette;
 document.getElementById('statsbtn').onclick = openStats;
 document.getElementById('discoverbtn').onclick = () => openDiscover({ mode: 'filters' });
+document.getElementById('suggestionsbtn').onclick = () => openSuggestions();
 document.getElementById('exportbtn').onclick = () => { window.location.href = `${API}/api/films/export.csv`; };
 let debounce;
 searchEl.oninput = () => { clearTimeout(debounce); debounce = setTimeout(loadFilms, 250); };
 genreFilterEl.onchange = loadFilms;
-plateformeFilterEl.onchange = loadFilms;
 paysFilterEl.onchange = loadFilms;
 dureeFilterEl.onchange = loadFilms;
 anneeFilterEl.onchange = loadFilms;
@@ -782,6 +891,7 @@ async function ensureTmdbMeta() {
 
 let discoverState = { mode: 'filters', tmdbId: null, sourceTitre: '', page: 1, results: [], addedIds: new Set() };
 let watchlistTmdbIds = new Set();
+let discProviderMS = null;
 
 async function refreshWatchlistTmdbIds() {
   try {
@@ -821,9 +931,10 @@ async function openDiscover(opts) {
         <select id="disc-genre"><option value="">Tous genres</option>
           ${tmdbGenreCache.map(g => `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('')}
         </select>
-        <select id="disc-provider"><option value="">Toutes plateformes</option>
-          ${tmdbProviderCache.map(p => `<option value="${p.provider_id}">${escapeHtml(p.provider_name)}</option>`).join('')}
-        </select>
+        <div class="ms-wrap" id="ms-disc-provider">
+          <button type="button" class="ms-btn" id="ms-disc-provider-btn">Toutes plateformes</button>
+          <div class="ms-panel" id="ms-disc-provider-panel"></div>
+        </div>
         <select id="disc-pays">
           <option value="">Tous pays</option>
           <option value="FR">France</option>
@@ -866,9 +977,16 @@ async function openDiscover(opts) {
         </select>
       </div>
     `;
-    ['disc-genre', 'disc-provider', 'disc-pays', 'disc-duree', 'disc-annee', 'disc-note', 'disc-sort'].forEach(id => {
+    ['disc-genre', 'disc-pays', 'disc-duree', 'disc-annee', 'disc-note', 'disc-sort'].forEach(id => {
       document.getElementById(id).onchange = () => runDiscover(1);
     });
+    discProviderMS = setupMultiSelect(
+      'ms-disc-provider-btn', 'ms-disc-provider-panel',
+      async () => tmdbProviderCache.map(p => ({ value: p.provider_id, label: p.provider_name })),
+      () => runDiscover(1),
+      'Toutes plateformes'
+    );
+    await discProviderMS.loadOptions();
   } else {
     document.getElementById('discover-toolbar-zone').innerHTML = '';
   }
@@ -892,13 +1010,13 @@ async function runDiscover(page) {
   } else {
     const params = new URLSearchParams({ sort_by: document.getElementById('disc-sort').value, page });
     const genreVal = document.getElementById('disc-genre').value;
-    const providerVal = document.getElementById('disc-provider').value;
+    const providerVals = discProviderMS ? discProviderMS.getSelected() : [];
     const paysVal = document.getElementById('disc-pays').value;
     const dureeVal = document.getElementById('disc-duree').value;
     const anneeVal = document.getElementById('disc-annee').value;
     const noteVal = document.getElementById('disc-note').value;
     if (genreVal) params.set('genre_id', genreVal);
-    if (providerVal) params.set('provider_id', providerVal);
+    if (providerVals.length) params.set('provider_id', providerVals.join('|'));
     if (paysVal) params.set('origin_country', paysVal);
     const dureeParsedD = parseDureeFilter(dureeVal);
     if (dureeParsedD.duree_max) params.set('duree_max', dureeParsedD.duree_max);
@@ -1015,12 +1133,121 @@ async function addFromDiscover(tmdbId, btn) {
     if (card) card.remove();
     await loadFilms();
     await loadGenres();
-    await loadPlateformes();
+    if (toolbarPlatformMS) await toolbarPlatformMS.loadOptions();
     await loadPays();
   } catch (e) {
     btn.textContent = 'Erreur';
     btn.disabled = false;
   }
+}
+
+// --- Suggestions personnalisees (basees sur tes notes) ---
+
+async function openSuggestions() {
+  suggestionsRoot.innerHTML = `
+    <div class="sugg-backdrop" id="sugg-backdrop">
+      <div class="sugg-panel">
+        <div class="sugg-header">
+          <h3>Suggestions pour toi</h3>
+          <button class="sugg-close-x" id="sugg-close-x">&times;</button>
+        </div>
+        <div style="font-size:12px;color:var(--ink-faint);">Basees sur les notes que tu as donnees a tes films vus.</div>
+        <div id="sugg-body"><div class="sugg-message">Analyse de tes gouts en cours...</div></div>
+      </div>
+    </div>
+  `;
+  document.getElementById('sugg-backdrop').onclick = (e) => { if (e.target.id === 'sugg-backdrop') closeSuggestions(); };
+  document.getElementById('sugg-close-x').onclick = closeSuggestions;
+
+  await refreshWatchlistTmdbIds();
+  const body = document.getElementById('sugg-body');
+
+  let backlogData, discoverData;
+  try {
+    const [r1, r2] = await Promise.all([
+      fetch(`${API}/api/suggestions/backlog`),
+      fetch(`${API}/api/suggestions/discover`),
+    ]);
+    backlogData = await r1.json();
+    discoverData = await r2.json();
+  } catch (e) {
+    body.innerHTML = '<div class="sugg-message">Erreur reseau pendant le calcul des suggestions.</div>';
+    return;
+  }
+
+  let html = '';
+
+  html += '<div class="sugg-section-title">Dans ta liste "a voir", par ordre de priorite</div>';
+  if (backlogData.message) {
+    html += `<div class="sugg-message">${escapeHtml(backlogData.message)}</div>`;
+  } else {
+    html += '<div class="sugg-backlog-list">';
+    html += backlogData.suggestions.map(f => {
+      const why = f.genres_matches && f.genres_matches.length
+        ? `Correspond a ton gout pour : <b>${f.genres_matches.map(escapeHtml).join(', ')}</b>`
+        : (f.score > 0 ? 'Realisateur que tu apprecies' : 'Peu de correspondance avec tes gouts actuels');
+      const posterHtml = f.poster_url ? `<img src="${escapeHtml(f.poster_url)}" alt="" />` : '<div style="width:40px;height:60px;background:var(--void);border-radius:4px;flex-shrink:0;"></div>';
+      return `
+        <div class="sugg-backlog-row">
+          ${posterHtml}
+          <div class="sugg-backlog-info">
+            <div class="sugg-backlog-title">${escapeHtml(f.titre)}${f.annee ? ' (' + f.annee + ')' : ''}</div>
+            <div class="sugg-backlog-why">${why}</div>
+          </div>
+          ${f.tmdb_id ? `<button class="statusbtn" data-sugg-trailer="${f.tmdb_id}" style="width:auto;padding:6px 10px;">BA</button>` : ''}
+          <button class="statusbtn vu-active" style="width:auto;padding:6px 10px;" data-sugg-watch="${f.id}">Marquer vu</button>
+        </div>
+      `;
+    }).join('');
+    html += '</div>';
+  }
+
+  html += '<div class="sugg-section-title">Nouvelles decouvertes qui devraient te plaire</div>';
+  if (discoverData.message) {
+    html += `<div class="sugg-message">${escapeHtml(discoverData.message)}</div>`;
+  } else {
+    html += discoverData.genre_utilise
+      ? `<div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">Deduit de ton gout marque pour : <b style="color:var(--gold);">${escapeHtml(discoverData.genre_utilise)}</b></div>`
+      : '';
+    html += '<div class="discover-grid">';
+    html += discoverData.results.map(r => `
+      <div class="discover-card">
+        ${r.poster_url ? `<img src="${escapeHtml(r.poster_url)}" alt="" />` : `<div style="aspect-ratio:2/3;background:var(--void);"></div>`}
+        <div class="discover-card-body">
+          <div class="discover-card-title">${escapeHtml(r.titre)}</div>
+          <div class="discover-card-meta">${r.annee || ''}${r.note_tmdb ? ' &middot; ' + r.note_tmdb + '/10' : ''}</div>
+          <div class="discover-card-synopsis">${escapeHtml(r.synopsis || 'Pas de synopsis disponible.')}</div>
+          <div style="display:flex;gap:6px;">
+            <button class="discover-add-btn" data-add-tmdb="${r.tmdb_id}">+ Ajouter</button>
+            <button class="discover-add-btn" style="background:none;border:1px solid var(--line);color:var(--ink-dim);" data-trailer-tmdb="${r.tmdb_id}">BA</button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+    html += '</div>';
+  }
+
+  body.innerHTML = html;
+
+  body.querySelectorAll('[data-sugg-watch]').forEach(btn => {
+    btn.onclick = async () => {
+      await toggleStatus(parseInt(btn.getAttribute('data-sugg-watch'), 10));
+      closeSuggestions();
+    };
+  });
+  body.querySelectorAll('[data-sugg-trailer]').forEach(btn => {
+    btn.onclick = () => openTrailer(parseInt(btn.getAttribute('data-sugg-trailer'), 10), btn);
+  });
+  body.querySelectorAll('[data-add-tmdb]').forEach(btn => {
+    btn.onclick = () => addFromDiscover(parseInt(btn.getAttribute('data-add-tmdb'), 10), btn);
+  });
+  body.querySelectorAll('[data-trailer-tmdb]').forEach(btn => {
+    btn.onclick = () => openTrailer(parseInt(btn.getAttribute('data-trailer-tmdb'), 10), btn);
+  });
+}
+
+function closeSuggestions() {
+  suggestionsRoot.innerHTML = '';
 }
 
 async function openStats() {
@@ -1090,7 +1317,7 @@ function closeStats() {
 
 loadFilms();
 loadGenres();
-loadPlateformes();
+initToolbarPlatformMS();
 loadPays();
 </script>
 </body>

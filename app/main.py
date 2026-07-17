@@ -42,7 +42,7 @@ def list_films(
     statut: str | None = None,
     genre: str | None = None,
     acteur: str | None = None,
-    plateforme: str | None = None,
+    plateforme: list[str] | None = Query(default=None),
     pays: str | None = None,
     duree_min: int | None = None,
     duree_max: int | None = None,
@@ -64,8 +64,8 @@ def list_films(
         query += " AND acteurs LIKE ?"
         params.append(f"%{acteur}%")
     if plateforme:
-        query += " AND plateforme LIKE ?"
-        params.append(f"%{plateforme}%")
+        query += " AND (" + " OR ".join(["plateforme LIKE ?"] * len(plateforme)) + ")"
+        params.extend(f"%{p}%" for p in plateforme)
     if pays:
         query += " AND pays LIKE ?"
         params.append(f"%{pays}%")
@@ -156,7 +156,7 @@ def delete_film(film_id: int):
 @app.get("/api/films/random", response_model=FilmOut)
 def random_film(
     genre: str | None = None,
-    plateforme: str | None = None,
+    plateforme: list[str] | None = Query(default=None),
     duree_min: int | None = None,
     duree_max: int | None = None,
     pays: str | None = None,
@@ -169,8 +169,8 @@ def random_film(
         query += " AND genres LIKE ?"
         params.append(f"%{genre}%")
     if plateforme:
-        query += " AND plateforme LIKE ?"
-        params.append(f"%{plateforme}%")
+        query += " AND (" + " OR ".join(["plateforme LIKE ?"] * len(plateforme)) + ")"
+        params.extend(f"%{p}%" for p in plateforme)
     if duree_min:
         query += " AND duree_minutes IS NOT NULL AND duree_minutes >= ?"
         params.append(duree_min)
@@ -193,6 +193,94 @@ def random_film(
     if not row:
         raise HTTPException(404, "Aucun film a voir dans la liste (avec ce filtre)")
     return _row_to_dict(row)
+
+
+def _compute_genre_weights(vus_notes: list[dict]) -> Counter:
+    """Score d'affinite par genre : +/- (note - 5.5) pour chaque film vu et note.
+    Un genre presente dans des films bien notes ressort positif, mal notes negatif."""
+    weights = Counter()
+    for f in vus_notes:
+        delta = f["note"] - 5.5
+        for g in [x.strip() for x in (f["genres"] or "").split(",") if x.strip()]:
+            weights[g] += delta
+    return weights
+
+
+def _compute_realisateur_weights(vus_notes: list[dict]) -> Counter:
+    weights = Counter()
+    for f in vus_notes:
+        delta = f["note"] - 5.5
+        r = (f["realisateur"] or "").strip()
+        if r:
+            weights[r] += delta
+    return weights
+
+
+@app.get("/api/suggestions/backlog")
+def suggestions_backlog(limit: int = 10):
+    """Reordonne ta liste 'a voir' selon ce que tes notes disent de tes gouts."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM films").fetchall()
+    films_all = [_row_to_dict(r) for r in rows]
+    vus_notes = [f for f in films_all if f["statut"] == "vu" and f["note"] is not None]
+    a_voir = [f for f in films_all if f["statut"] == "avoir"]
+
+    if not vus_notes:
+        return {"suggestions": [], "message": "Note au moins quelques films vus pour activer les suggestions personnalisees."}
+    if not a_voir:
+        return {"suggestions": [], "message": "Ta liste 'a voir' est vide."}
+
+    genre_w = _compute_genre_weights(vus_notes)
+    real_w = _compute_realisateur_weights(vus_notes)
+
+    scored = []
+    for f in a_voir:
+        genres = [x.strip() for x in (f["genres"] or "").split(",") if x.strip()]
+        score = sum(genre_w.get(g, 0) for g in genres)
+        score += real_w.get((f["realisateur"] or "").strip(), 0) * 1.5
+        if f.get("note_tmdb"):
+            score += f["note_tmdb"] * 0.2
+        matched = [g for g in genres if genre_w.get(g, 0) > 0]
+        scored.append({**f, "score": round(score, 2), "genres_matches": matched})
+
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return {"suggestions": scored[:limit], "message": None}
+
+
+@app.get("/api/suggestions/discover")
+async def suggestions_discover(limit: int = 12):
+    """Propose des films hors watchlist dans ton genre le mieux note, via TMDb."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM films").fetchall()
+    films_all = [_row_to_dict(r) for r in rows]
+    vus_notes = [f for f in films_all if f["statut"] == "vu" and f["note"] is not None]
+
+    if not vus_notes:
+        return {"results": [], "genre_utilise": None, "message": "Note au moins quelques films vus pour activer les suggestions personnalisees."}
+
+    genre_w = _compute_genre_weights(vus_notes)
+    positive_genres = [g for g, w in genre_w.items() if w > 0]
+    if not positive_genres:
+        return {"results": [], "genre_utilise": None, "message": "Pas encore assez de notes positives pour deduire tes gouts."}
+    top_genre_name = max(positive_genres, key=lambda g: genre_w[g])
+
+    try:
+        tmdb_genres = await tmdb.get_genre_list()
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+
+    genre_id = next((g["id"] for g in tmdb_genres if g["name"] == top_genre_name), None)
+    if genre_id is None:
+        return {"results": [], "genre_utilise": top_genre_name, "message": f"Genre prefere detecte ({top_genre_name}) mais introuvable cote TMDb."}
+
+    existing_ids = {f["tmdb_id"] for f in films_all if f["tmdb_id"]}
+    try:
+        data = await tmdb.discover_movies(genre_id=genre_id, note_min=7, sort_by="vote_average.desc", page=1)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+
+    filtered = [r for r in data["results"] if r["tmdb_id"] not in existing_ids][:limit]
+    return {"results": filtered, "genre_utilise": top_genre_name, "message": None}
 
 
 @app.get("/api/stats")
@@ -382,7 +470,7 @@ async def tmdb_trailer(tmdb_id: int):
 @app.get("/api/tmdb/discover")
 async def tmdb_discover(
     genre_id: int | None = None,
-    provider_id: int | None = None,
+    provider_id: str | None = None,
     duree_min: int | None = None,
     duree_max: int | None = None,
     note_min: float | None = None,
