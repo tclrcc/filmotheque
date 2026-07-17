@@ -44,6 +44,7 @@ def list_films(
     acteur: str | None = None,
     plateforme: str | None = None,
     pays: str | None = None,
+    duree_min: int | None = None,
     duree_max: int | None = None,
     annee_min: int | None = None,
     annee_max: int | None = None,
@@ -68,6 +69,9 @@ def list_films(
     if pays:
         query += " AND pays LIKE ?"
         params.append(f"%{pays}%")
+    if duree_min:
+        query += " AND duree_minutes IS NOT NULL AND duree_minutes >= ?"
+        params.append(duree_min)
     if duree_max:
         query += " AND duree_minutes IS NOT NULL AND duree_minutes <= ?"
         params.append(duree_max)
@@ -153,6 +157,7 @@ def delete_film(film_id: int):
 def random_film(
     genre: str | None = None,
     plateforme: str | None = None,
+    duree_min: int | None = None,
     duree_max: int | None = None,
     pays: str | None = None,
     annee_min: int | None = None,
@@ -166,6 +171,9 @@ def random_film(
     if plateforme:
         query += " AND plateforme LIKE ?"
         params.append(f"%{plateforme}%")
+    if duree_min:
+        query += " AND duree_minutes IS NOT NULL AND duree_minutes >= ?"
+        params.append(duree_min)
     if duree_max:
         query += " AND duree_minutes IS NOT NULL AND duree_minutes <= ?"
         params.append(duree_max)
@@ -298,6 +306,14 @@ def list_pays():
             if p:
                 pays_set.add(p)
     return sorted(pays_set)
+
+
+@app.get("/api/meta/tmdb-ids")
+def list_tmdb_ids():
+    """Tous les tmdb_id deja presents dans la watchlist (avoir ou vu), pour les exclure de Decouvrir."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT tmdb_id FROM films WHERE tmdb_id IS NOT NULL").fetchall()
+    return [row["tmdb_id"] for row in rows]
 
 
 @app.get("/api/tmdb/search")

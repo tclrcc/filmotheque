@@ -207,12 +207,17 @@
     <select id="filter-pays"><option value="">Tous pays</option></select>
     <select id="filter-duree">
       <option value="">Toutes durees</option>
-      <option value="90">&le; 1h30</option>
-      <option value="110">&le; 1h50</option>
-      <option value="130">&le; 2h10</option>
+      <option value="max90">&le; 1h30</option>
+      <option value="max110">&le; 1h50</option>
+      <option value="max130">&le; 2h10</option>
+      <option value="max160">&le; 2h40</option>
+      <option value="min90">&gt; 1h30</option>
+      <option value="min120">&gt; 2h00</option>
+      <option value="min150">&gt; 2h30</option>
     </select>
     <select id="filter-annee">
       <option value="">Toutes annees</option>
+      <option value="2019">&lt; 2020</option>
       <option value="2009">&lt; 2010</option>
       <option value="1999">&lt; 2000</option>
       <option value="1989">&lt; 1990</option>
@@ -278,13 +283,22 @@ function escapeHtml(s) {
 }
 function splitTags(str) { return (str || '').split(',').map(s => s.trim()).filter(Boolean); }
 
+function parseDureeFilter(value) {
+  if (!value) return {};
+  if (value.startsWith('max')) return { duree_max: value.slice(3) };
+  if (value.startsWith('min')) return { duree_min: value.slice(3) };
+  return {};
+}
+
 async function loadFilms() {
   const params = new URLSearchParams();
   if (searchEl.value.trim()) params.set('search', searchEl.value.trim());
   if (genreFilterEl.value) params.set('genre', genreFilterEl.value);
   if (plateformeFilterEl.value) params.set('plateforme', plateformeFilterEl.value);
   if (paysFilterEl.value) params.set('pays', paysFilterEl.value);
-  if (dureeFilterEl.value) params.set('duree_max', dureeFilterEl.value);
+  const dureeParsed = parseDureeFilter(dureeFilterEl.value);
+  if (dureeParsed.duree_max) params.set('duree_max', dureeParsed.duree_max);
+  if (dureeParsed.duree_min) params.set('duree_min', dureeParsed.duree_min);
   if (anneeFilterEl.value) params.set('annee_max', anneeFilterEl.value);
   if (statusFilterEl.value) params.set('statut', statusFilterEl.value);
   if (activeActor) params.set('acteur', activeActor);
@@ -687,7 +701,9 @@ async function drawRoulette() {
   const params = new URLSearchParams();
   if (genreFilterEl.value) params.set('genre', genreFilterEl.value);
   if (plateformeFilterEl.value) params.set('plateforme', plateformeFilterEl.value);
-  if (dureeFilterEl.value) params.set('duree_max', dureeFilterEl.value);
+  const dureeParsedR = parseDureeFilter(dureeFilterEl.value);
+  if (dureeParsedR.duree_max) params.set('duree_max', dureeParsedR.duree_max);
+  if (dureeParsedR.duree_min) params.set('duree_min', dureeParsedR.duree_min);
   if (paysFilterEl.value) params.set('pays', paysFilterEl.value);
   if (anneeFilterEl.value) params.set('annee_max', anneeFilterEl.value);
 
@@ -765,9 +781,19 @@ async function ensureTmdbMeta() {
 }
 
 let discoverState = { mode: 'filters', tmdbId: null, sourceTitre: '', page: 1, results: [], addedIds: new Set() };
+let watchlistTmdbIds = new Set();
+
+async function refreshWatchlistTmdbIds() {
+  try {
+    const res = await fetch(`${API}/api/meta/tmdb-ids`);
+    const ids = res.ok ? await res.json() : [];
+    watchlistTmdbIds = new Set(ids);
+  } catch (e) { watchlistTmdbIds = new Set(); }
+}
 
 async function openDiscover(opts) {
   discoverState = { mode: opts.mode, tmdbId: opts.tmdbId || null, sourceTitre: opts.sourceTitre || '', page: 1, results: [], addedIds: new Set() };
+  await refreshWatchlistTmdbIds();
 
   discoverRoot.innerHTML = `
     <div class="discover-backdrop" id="discover-backdrop">
@@ -811,12 +837,17 @@ async function openDiscover(opts) {
         </select>
         <select id="disc-duree">
           <option value="">Toutes durees</option>
-          <option value="90">&le; 1h30</option>
-          <option value="110">&le; 1h50</option>
-          <option value="130">&le; 2h10</option>
+          <option value="max90">&le; 1h30</option>
+          <option value="max110">&le; 1h50</option>
+          <option value="max130">&le; 2h10</option>
+          <option value="max160">&le; 2h40</option>
+          <option value="min90">&gt; 1h30</option>
+          <option value="min120">&gt; 2h00</option>
+          <option value="min150">&gt; 2h30</option>
         </select>
         <select id="disc-annee">
           <option value="">Toutes annees</option>
+          <option value="2019">&lt; 2020</option>
           <option value="2009">&lt; 2010</option>
           <option value="1999">&lt; 2000</option>
           <option value="1989">&lt; 1990</option>
@@ -869,7 +900,9 @@ async function runDiscover(page) {
     if (genreVal) params.set('genre_id', genreVal);
     if (providerVal) params.set('provider_id', providerVal);
     if (paysVal) params.set('origin_country', paysVal);
-    if (dureeVal) params.set('duree_max', dureeVal);
+    const dureeParsedD = parseDureeFilter(dureeVal);
+    if (dureeParsedD.duree_max) params.set('duree_max', dureeParsedD.duree_max);
+    if (dureeParsedD.duree_min) params.set('duree_min', dureeParsedD.duree_min);
     if (anneeVal) params.set('annee_max', anneeVal);
     if (noteVal) params.set('note_min', noteVal);
     url = `${API}/api/tmdb/discover?${params.toString()}`;
@@ -889,12 +922,20 @@ async function runDiscover(page) {
     return;
   }
 
-  if (page === 1) discoverState.results = data.results;
-  else discoverState.results = discoverState.results.concat(data.results);
+  const filteredResults = data.results.filter(r => !watchlistTmdbIds.has(r.tmdb_id));
+
+  if (page === 1) discoverState.results = filteredResults;
+  else discoverState.results = discoverState.results.concat(filteredResults);
 
   if (discoverState.results.length === 0) {
-    gridEl.innerHTML = '<div class="discover-empty">Aucun resultat pour ces criteres.</div>';
-    moreZone.innerHTML = '';
+    gridEl.innerHTML = data.page < data.total_pages
+      ? '<div class="discover-empty">Tous les resultats de cette page sont deja dans ta liste. Charge la suite.</div>'
+      : '<div class="discover-empty">Aucun resultat pour ces criteres (ou tout est deja dans ta liste).</div>';
+    moreZone.innerHTML = data.page < data.total_pages
+      ? `<button class="discover-more" id="discover-load-more">Charger plus</button>`
+      : '';
+    const moreBtnEmpty = document.getElementById('discover-load-more');
+    if (moreBtnEmpty) moreBtnEmpty.onclick = () => runDiscover(discoverState.page + 1);
     return;
   }
 
@@ -968,8 +1009,10 @@ async function addFromDiscover(tmdbId, btn) {
       synopsis: d.synopsis || '', note_tmdb: d.note_tmdb, pays: d.pays || '',
     };
     await fetch(`${API}/api/films`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    discoverState.addedIds.add(tmdbId);
-    btn.textContent = 'Ajoute';
+    watchlistTmdbIds.add(tmdbId);
+    discoverState.results = discoverState.results.filter(r => r.tmdb_id !== tmdbId);
+    const card = btn.closest('.discover-card');
+    if (card) card.remove();
     await loadFilms();
     await loadGenres();
     await loadPlateformes();
