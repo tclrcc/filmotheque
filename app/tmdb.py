@@ -107,3 +107,110 @@ async def get_watch_providers_fr(tmdb_id: int) -> list[str]:
         if names and category in ("flatrate", "free"):
             break
     return names
+
+
+def _movie_summary(r: dict) -> dict:
+    """Format compact utilise par discover/similar (pas de credits/runtime, cf. limites API)."""
+    vote_average = r.get("vote_average")
+    return {
+        "tmdb_id": r["id"],
+        "titre": r.get("title") or r.get("original_title"),
+        "annee": (r.get("release_date") or "")[:4] or None,
+        "poster_url": f"{TMDB_IMG_BASE}{r['poster_path']}" if r.get("poster_path") else None,
+        "synopsis": r.get("overview") or "",
+        "note_tmdb": round(vote_average, 1) if vote_average else None,
+        "genre_ids": r.get("genre_ids", []),
+    }
+
+
+async def get_genre_list() -> list[dict]:
+    """Liste des genres TMDb (id + nom), pour peupler le filtre de decouverte."""
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        resp = await client.get(
+            f"{TMDB_BASE}/genre/movie/list",
+            params={"api_key": _api_key(), "language": "fr-FR"},
+        )
+        resp.raise_for_status()
+        return resp.json().get("genres", [])
+
+
+async def get_watch_provider_list() -> list[dict]:
+    """Liste des plateformes de streaming disponibles en France (id + nom + logo)."""
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        resp = await client.get(
+            f"{TMDB_BASE}/watch/providers/movie",
+            params={"api_key": _api_key(), "watch_region": "FR", "language": "fr-FR"},
+        )
+        resp.raise_for_status()
+        data = resp.json().get("results", [])
+
+    # Priorite aux plateformes les plus utilisees en France (display_priorities.FR)
+    data.sort(key=lambda p: p.get("display_priorities", {}).get("FR", 999))
+    return [
+        {
+            "provider_id": p["provider_id"],
+            "provider_name": p["provider_name"],
+            "logo_url": f"https://image.tmdb.org/t/p/w45{p['logo_path']}" if p.get("logo_path") else None,
+        }
+        for p in data[:40]
+    ]
+
+
+async def discover_movies(
+    genre_id: int | None = None,
+    provider_id: int | None = None,
+    duree_min: int | None = None,
+    duree_max: int | None = None,
+    note_min: float | None = None,
+    sort_by: str = "popularity.desc",
+    page: int = 1,
+) -> dict:
+    """Recherche dans tout le catalogue TMDb selon des criteres, independamment de la watchlist."""
+    params = {
+        "api_key": _api_key(),
+        "language": "fr-FR",
+        "sort_by": sort_by,
+        "page": page,
+        "include_adult": "false",
+        "vote_count.gte": 50,  # evite les faux positifs "10/10" avec 2 votes
+    }
+    if genre_id:
+        params["with_genres"] = genre_id
+    if provider_id:
+        params["with_watch_providers"] = provider_id
+        params["watch_region"] = "FR"
+        params["with_watch_monetization_types"] = "flatrate|free|ads"
+    if duree_min:
+        params["with_runtime.gte"] = duree_min
+    if duree_max:
+        params["with_runtime.lte"] = duree_max
+    if note_min:
+        params["vote_average.gte"] = note_min
+
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        resp = await client.get(f"{TMDB_BASE}/discover/movie", params=params)
+        resp.raise_for_status()
+        data = resp.json()
+
+    return {
+        "page": data.get("page", 1),
+        "total_pages": data.get("total_pages", 1),
+        "results": [_movie_summary(r) for r in data.get("results", [])],
+    }
+
+
+async def get_similar_movies(tmdb_id: int, page: int = 1) -> dict:
+    """Films similaires a un film donne (recommandations TMDb)."""
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        resp = await client.get(
+            f"{TMDB_BASE}/movie/{tmdb_id}/recommendations",
+            params={"api_key": _api_key(), "language": "fr-FR", "page": page},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    return {
+        "page": data.get("page", 1),
+        "total_pages": data.get("total_pages", 1),
+        "results": [_movie_summary(r) for r in data.get("results", [])],
+    }

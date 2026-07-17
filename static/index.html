@@ -62,6 +62,34 @@
   }
   .statsbtn:hover, .exportbtn:hover { border-color: var(--gold-dim); color: var(--ink); }
 
+  .discoverbtn {
+    background: var(--teal); border: none; color: #fff; padding: 9px 16px;
+    border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  .discoverbtn:hover { background: #3A8079; }
+
+  .discover-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: flex; align-items: flex-start; justify-content: center; padding: 3vh 1rem; z-index: 65; overflow-y: auto; }
+  .discover-panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px; width: 100%; max-width: 900px; }
+  .discover-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+  .discover-header h3 { font-size: 24px; color: var(--teal); }
+  .discover-close-x { background: none; border: none; color: var(--ink-faint); font-size: 20px; cursor: pointer; }
+  .discover-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .discover-toolbar select {
+    background: var(--void); border: 1px solid var(--line); color: var(--ink);
+    padding: 8px 10px; border-radius: 8px; font-size: 12.5px; font-family: 'Work Sans', sans-serif;
+  }
+  .discover-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+  .discover-card { background: var(--card-hi); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+  .discover-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; background: var(--void); }
+  .discover-card-body { padding: 8px 9px 10px; flex: 1; display: flex; flex-direction: column; }
+  .discover-card-title { font-size: 13px; color: var(--ink); line-height: 1.2; margin-bottom: 3px; }
+  .discover-card-meta { font-size: 10.5px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; margin-bottom: 6px; }
+  .discover-card-synopsis { font-size: 11px; color: var(--ink-dim); line-height: 1.35; flex: 1; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .discover-add-btn { background: var(--gold); color: #1A1508; border: none; padding: 6px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; }
+  .discover-add-btn:disabled { background: var(--card-hi); color: var(--ink-faint); border: 1px solid var(--line); cursor: default; }
+  .discover-empty { color: var(--ink-faint); font-size: 13px; grid-column: 1/-1; text-align: center; padding: 2rem; }
+  .discover-more { display: block; margin: 18px auto 0; background: none; border: 1px solid var(--line); color: var(--ink-dim); padding: 9px 20px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+
   .stats-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: flex-start; justify-content: center; padding: 4vh 1rem; z-index: 55; overflow-y: auto; }
   .stats-panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 24px; width: 100%; max-width: 620px; }
   .stats-panel h3 { font-size: 24px; color: var(--gold); margin-bottom: 18px; }
@@ -193,6 +221,7 @@
       <option value="titre">Titre A-Z</option>
     </select>
     <button class="rouletbtn" id="roulettebtn">Seance surprise</button>
+    <button class="discoverbtn" id="discoverbtn">Decouvrir</button>
     <button class="statsbtn" id="statsbtn">Statistiques</button>
     <button class="exportbtn" id="exportbtn">Export CSV</button>
     <button class="addbtn" id="addbtn">+ Ajouter un film</button>
@@ -206,6 +235,7 @@
 <div id="modal-root"></div>
 <div id="roulette-root"></div>
 <div id="stats-root"></div>
+<div id="discover-root"></div>
 
 <script>
 const API = '';
@@ -219,7 +249,12 @@ const grid = document.getElementById('grid');
 const modalRoot = document.getElementById('modal-root');
 const rouletteRoot = document.getElementById('roulette-root');
 const statsRoot = document.getElementById('stats-root');
+const discoverRoot = document.getElementById('discover-root');
 const countEl = document.getElementById('count');
+
+let tmdbGenreCache = null;
+let tmdbProviderCache = null;
+let tmdbGenreMap = {};
 const actorChipZone = document.getElementById('actor-chip-zone');
 const searchEl = document.getElementById('search');
 const genreFilterEl = document.getElementById('filter-genre');
@@ -324,6 +359,7 @@ function render() {
           ${f.note !== null && f.note !== undefined ? `<div class="note">${f.note}</div>` : `<div class="note empty">--</div>`}
           <button class="statusbtn ${f.statut === 'vu' ? 'vu-active' : ''}" data-action="toggle" data-id="${f.id}">${f.statut === 'vu' ? 'VU' : 'A VOIR'}</button>
           <button class="statusbtn" data-action="edit" data-id="${f.id}">Editer</button>
+          ${f.tmdb_id ? `<button class="statusbtn" data-action="similar" data-tmdb-id="${f.tmdb_id}" data-titre="${escapeHtml(f.titre)}">Similaires</button>` : ''}
           <button class="delbtn" data-action="delete" data-id="${f.id}">&times;</button>
         </div>
       </div>
@@ -337,6 +373,7 @@ function render() {
       if (action === 'toggle') toggleStatus(id);
       else if (action === 'delete') deleteFilm(id);
       else if (action === 'edit') openModal(films.find(f => f.id === id));
+      else if (action === 'similar') openDiscover({ mode: 'similar', tmdbId: parseInt(btn.getAttribute('data-tmdb-id'), 10), sourceTitre: btn.getAttribute('data-titre') });
     };
   });
 
@@ -660,6 +697,7 @@ async function drawRoulette() {
 document.getElementById('addbtn').onclick = () => openModal(null);
 document.getElementById('roulettebtn').onclick = openRoulette;
 document.getElementById('statsbtn').onclick = openStats;
+document.getElementById('discoverbtn').onclick = () => openDiscover({ mode: 'filters' });
 document.getElementById('exportbtn').onclick = () => { window.location.href = `${API}/api/films/export.csv`; };
 let debounce;
 searchEl.oninput = () => { clearTimeout(debounce); debounce = setTimeout(loadFilms, 250); };
@@ -668,6 +706,189 @@ plateformeFilterEl.onchange = loadFilms;
 dureeFilterEl.onchange = loadFilms;
 statusFilterEl.onchange = loadFilms;
 sortEl.onchange = loadFilms;
+
+// --- Decouvrir (catalogue TMDb complet, hors watchlist) ---
+
+async function ensureTmdbMeta() {
+  if (!tmdbGenreCache) {
+    try {
+      const res = await fetch(`${API}/api/tmdb/genres`);
+      tmdbGenreCache = res.ok ? await res.json() : [];
+      tmdbGenreMap = {};
+      tmdbGenreCache.forEach(g => { tmdbGenreMap[g.id] = g.name; });
+    } catch (e) { tmdbGenreCache = []; }
+  }
+  if (!tmdbProviderCache) {
+    try {
+      const res = await fetch(`${API}/api/tmdb/watch-providers`);
+      tmdbProviderCache = res.ok ? await res.json() : [];
+    } catch (e) { tmdbProviderCache = []; }
+  }
+}
+
+let discoverState = { mode: 'filters', tmdbId: null, sourceTitre: '', page: 1, results: [], addedIds: new Set() };
+
+async function openDiscover(opts) {
+  discoverState = { mode: opts.mode, tmdbId: opts.tmdbId || null, sourceTitre: opts.sourceTitre || '', page: 1, results: [], addedIds: new Set() };
+
+  discoverRoot.innerHTML = `
+    <div class="discover-backdrop" id="discover-backdrop">
+      <div class="discover-panel">
+        <div class="discover-header">
+          <h3>${discoverState.mode === 'similar' ? 'Similaires a ' + escapeHtml(discoverState.sourceTitre) : 'Decouvrir de nouveaux films'}</h3>
+          <button class="discover-close-x" id="discover-close-x">&times;</button>
+        </div>
+        <div id="discover-toolbar-zone"></div>
+        <div class="discover-grid" id="discover-grid">
+          <div class="discover-empty">Chargement...</div>
+        </div>
+        <div id="discover-more-zone"></div>
+      </div>
+    </div>
+  `;
+  document.getElementById('discover-backdrop').onclick = (e) => { if (e.target.id === 'discover-backdrop') closeDiscover(); };
+  document.getElementById('discover-close-x').onclick = closeDiscover;
+
+  if (discoverState.mode === 'filters') {
+    await ensureTmdbMeta();
+    const toolbarZone = document.getElementById('discover-toolbar-zone');
+    toolbarZone.innerHTML = `
+      <div class="discover-toolbar">
+        <select id="disc-genre"><option value="">Tous genres</option>
+          ${tmdbGenreCache.map(g => `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('')}
+        </select>
+        <select id="disc-provider"><option value="">Toutes plateformes</option>
+          ${tmdbProviderCache.map(p => `<option value="${p.provider_id}">${escapeHtml(p.provider_name)}</option>`).join('')}
+        </select>
+        <select id="disc-duree">
+          <option value="">Toutes durees</option>
+          <option value="90">&le; 1h30</option>
+          <option value="110">&le; 1h50</option>
+          <option value="130">&le; 2h10</option>
+        </select>
+        <select id="disc-note">
+          <option value="">Toutes notes</option>
+          <option value="6">6+ /10</option>
+          <option value="7">7+ /10</option>
+          <option value="8">8+ /10</option>
+        </select>
+        <select id="disc-sort">
+          <option value="popularity.desc">Popularite</option>
+          <option value="vote_average.desc">Meilleures notes</option>
+          <option value="primary_release_date.desc">Plus recents</option>
+        </select>
+      </div>
+    `;
+    ['disc-genre', 'disc-provider', 'disc-duree', 'disc-note', 'disc-sort'].forEach(id => {
+      document.getElementById(id).onchange = () => runDiscover(1);
+    });
+  } else {
+    document.getElementById('discover-toolbar-zone').innerHTML = '';
+  }
+
+  await runDiscover(1);
+}
+
+function closeDiscover() {
+  discoverRoot.innerHTML = '';
+}
+
+async function runDiscover(page) {
+  discoverState.page = page;
+  const gridEl = document.getElementById('discover-grid');
+  const moreZone = document.getElementById('discover-more-zone');
+  if (page === 1) { gridEl.innerHTML = '<div class="discover-empty">Chargement...</div>'; moreZone.innerHTML = ''; }
+
+  let url;
+  if (discoverState.mode === 'similar') {
+    url = `${API}/api/tmdb/similar/${discoverState.tmdbId}?page=${page}`;
+  } else {
+    const params = new URLSearchParams({ sort_by: document.getElementById('disc-sort').value, page });
+    const genreVal = document.getElementById('disc-genre').value;
+    const providerVal = document.getElementById('disc-provider').value;
+    const dureeVal = document.getElementById('disc-duree').value;
+    const noteVal = document.getElementById('disc-note').value;
+    if (genreVal) params.set('genre_id', genreVal);
+    if (providerVal) params.set('provider_id', providerVal);
+    if (dureeVal) params.set('duree_max', dureeVal);
+    if (noteVal) params.set('note_min', noteVal);
+    url = `${API}/api/tmdb/discover?${params.toString()}`;
+  }
+
+  let data;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json();
+      gridEl.innerHTML = `<div class="discover-empty">${escapeHtml(err.detail || 'Erreur TMDb')}</div>`;
+      return;
+    }
+    data = await res.json();
+  } catch (e) {
+    gridEl.innerHTML = '<div class="discover-empty">Erreur reseau TMDb.</div>';
+    return;
+  }
+
+  if (page === 1) discoverState.results = data.results;
+  else discoverState.results = discoverState.results.concat(data.results);
+
+  if (discoverState.results.length === 0) {
+    gridEl.innerHTML = '<div class="discover-empty">Aucun resultat pour ces criteres.</div>';
+    moreZone.innerHTML = '';
+    return;
+  }
+
+  gridEl.innerHTML = discoverState.results.map(r => {
+    const genreNames = (r.genre_ids || []).map(id => tmdbGenreMap[id]).filter(Boolean).slice(0, 2);
+    const already = discoverState.addedIds.has(r.tmdb_id);
+    return `
+      <div class="discover-card">
+        ${r.poster_url ? `<img src="${escapeHtml(r.poster_url)}" alt="" />` : `<div style="aspect-ratio:2/3;background:var(--void);"></div>`}
+        <div class="discover-card-body">
+          <div class="discover-card-title">${escapeHtml(r.titre)}</div>
+          <div class="discover-card-meta">${r.annee || ''}${genreNames.length ? ' &middot; ' + genreNames.join(', ') : ''}${r.note_tmdb ? ' &middot; ' + r.note_tmdb + '/10' : ''}</div>
+          <div class="discover-card-synopsis">${escapeHtml(r.synopsis || 'Pas de synopsis disponible.')}</div>
+          <button class="discover-add-btn" data-add-tmdb="${r.tmdb_id}" ${already ? 'disabled' : ''}>${already ? 'Ajoute' : '+ Ajouter a ma liste'}</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  gridEl.querySelectorAll('[data-add-tmdb]').forEach(btn => {
+    btn.onclick = () => addFromDiscover(parseInt(btn.getAttribute('data-add-tmdb'), 10), btn);
+  });
+
+  moreZone.innerHTML = data.page < data.total_pages
+    ? `<button class="discover-more" id="discover-load-more">Charger plus</button>`
+    : '';
+  const moreBtn = document.getElementById('discover-load-more');
+  if (moreBtn) moreBtn.onclick = () => runDiscover(discoverState.page + 1);
+}
+
+async function addFromDiscover(tmdbId, btn) {
+  btn.textContent = 'Ajout...';
+  btn.disabled = true;
+  try {
+    const detailRes = await fetch(`${API}/api/tmdb/movie/${tmdbId}`);
+    const d = await detailRes.json();
+    const payload = {
+      titre: d.titre, tmdb_id: d.tmdb_id, annee: d.annee ? parseInt(d.annee, 10) : null,
+      genres: d.genres || '', acteurs: d.acteurs || '', realisateur: d.realisateur || '',
+      plateforme: d.plateformes_fr && d.plateformes_fr.length ? d.plateformes_fr.join(', ') : '',
+      poster_url: d.poster_url, statut: 'avoir', duree_minutes: d.duree_minutes,
+      synopsis: d.synopsis || '', note_tmdb: d.note_tmdb,
+    };
+    await fetch(`${API}/api/films`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    discoverState.addedIds.add(tmdbId);
+    btn.textContent = 'Ajoute';
+    await loadFilms();
+    await loadGenres();
+    await loadPlateformes();
+  } catch (e) {
+    btn.textContent = 'Erreur';
+    btn.disabled = false;
+  }
+}
 
 async function openStats() {
   statsRoot.innerHTML = `

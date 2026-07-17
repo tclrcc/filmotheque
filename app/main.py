@@ -289,6 +289,57 @@ async def tmdb_providers(tmdb_id: int):
         raise HTTPException(502, f"Erreur TMDb: {e}")
 
 
+@app.get("/api/tmdb/genres")
+async def tmdb_genres():
+    try:
+        return await tmdb.get_genre_list()
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Erreur TMDb: {e}")
+
+
+@app.get("/api/tmdb/watch-providers")
+async def tmdb_watch_providers():
+    try:
+        return await tmdb.get_watch_provider_list()
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Erreur TMDb: {e}")
+
+
+@app.get("/api/tmdb/discover")
+async def tmdb_discover(
+    genre_id: int | None = None,
+    provider_id: int | None = None,
+    duree_min: int | None = None,
+    duree_max: int | None = None,
+    note_min: float | None = None,
+    sort_by: str = "popularity.desc",
+    page: int = 1,
+):
+    try:
+        return await tmdb.discover_movies(
+            genre_id=genre_id, provider_id=provider_id, duree_min=duree_min,
+            duree_max=duree_max, note_min=note_min, sort_by=sort_by, page=page,
+        )
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Erreur TMDb: {e}")
+
+
+@app.get("/api/tmdb/similar/{tmdb_id}")
+async def tmdb_similar(tmdb_id: int, page: int = 1):
+    try:
+        return await tmdb.get_similar_movies(tmdb_id, page=page)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Erreur TMDb: {e}")
+
+
 @app.get("/")
 def serve_index():
     return FileResponse(STATIC_DIR / "index.html")
