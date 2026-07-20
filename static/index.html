@@ -176,6 +176,12 @@
     border-radius: 20px; margin-bottom: 12px; font-family: 'IBM Plex Mono', monospace;
   }
   .actor-chip button { background: none; border: none; color: #6FBDB4; cursor: pointer; font-size: 14px; padding: 0; line-height: 1; }
+  .person-mode-toggle { display: inline-flex; gap: 4px; }
+  .pmt-btn {
+    background: none; border: 1px solid var(--line); color: var(--ink-faint); font-size: 11px;
+    padding: 3px 8px; border-radius: 12px; cursor: pointer; font-family: 'IBM Plex Mono', monospace;
+  }
+  .pmt-btn.active { background: var(--teal); color: #fff; border-color: var(--teal); }
 
   .count { font-size: 12px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; margin-bottom: 1rem; }
 
@@ -1089,16 +1095,16 @@ async function openDiscover(opts) {
   document.getElementById('discover-backdrop').onclick = (e) => { if (e.target.id === 'discover-backdrop') closeDiscover(); };
   document.getElementById('discover-close-x').onclick = closeDiscover;
 
-  if (discoverState.mode === 'filters' || discoverState.mode === 'director') {
+  if (discoverState.mode === 'filters' || discoverState.mode === 'person') {
     await ensureTmdbMeta();
     const toolbarZone = document.getElementById('discover-toolbar-zone');
     toolbarZone.innerHTML = `
       <div class="tmdb-search-wrap" style="margin-bottom:10px;">
-        <input type="text" id="disc-director-search" placeholder="Chercher un realisateur (ex: Tarantino)..." autocomplete="off" />
+        <input type="text" id="disc-director-search" placeholder="Chercher un acteur ou un realisateur (ex: Tarantino, Tom Hanks)..." autocomplete="off" />
         <div class="tmdb-results" id="disc-director-results" style="display:none;"></div>
       </div>
       <div id="disc-director-chip"></div>
-      <div class="discover-toolbar" id="disc-standard-filters" style="${discoverState.mode === 'director' ? 'display:none;' : ''}">
+      <div class="discover-toolbar" id="disc-standard-filters" style="${discoverState.mode === 'person' ? 'display:none;' : ''}">
         <div class="ms-wrap" id="ms-disc-genre">
           <button type="button" class="ms-btn" id="ms-disc-genre-btn">Tous genres</button>
           <div class="ms-panel" id="ms-disc-genre-panel"></div>
@@ -1185,7 +1191,9 @@ function closeDiscover() {
 
 function discoverTitleFor() {
   if (discoverState.mode === 'similar') return 'Similaires a ' + escapeHtml(discoverState.sourceTitre);
-  if (discoverState.mode === 'director') return 'Films de ' + escapeHtml(discoverState.sourceTitre);
+  if (discoverState.mode === 'person') {
+    return (discoverState.personMode === 'director' ? 'Films de ' : 'Films avec ') + escapeHtml(discoverState.sourceTitre);
+  }
   return 'Decouvrir de nouveaux films';
 }
 
@@ -1206,7 +1214,7 @@ function setupDirectorSearch() {
         const people = await res.json();
         if (people.length === 0) { resultsEl.style.display = 'none'; return; }
         resultsEl.innerHTML = people.map(p => `
-          <div class="tmdb-result-item" data-person-id="${p.person_id}" data-person-nom="${escapeHtml(p.nom)}">
+          <div class="tmdb-result-item" data-person-id="${p.person_id}" data-person-nom="${escapeHtml(p.nom)}" data-person-mode="${p.connu_pour === 'Directing' ? 'director' : 'actor'}">
             <img src="${p.photo_url || ''}" alt="" />
             <div>
               <div class="rt">${escapeHtml(p.nom)}</div>
@@ -1216,18 +1224,23 @@ function setupDirectorSearch() {
         `).join('');
         resultsEl.style.display = 'block';
         resultsEl.querySelectorAll('[data-person-id]').forEach(item => {
-          item.onclick = () => selectDirector(parseInt(item.getAttribute('data-person-id'), 10), item.getAttribute('data-person-nom'));
+          item.onclick = () => selectPerson(
+            parseInt(item.getAttribute('data-person-id'), 10),
+            item.getAttribute('data-person-nom'),
+            item.getAttribute('data-person-mode')
+          );
         });
       } catch (e) { resultsEl.style.display = 'none'; }
     }, 350);
   });
 }
 
-async function selectDirector(personId, nom) {
+async function selectPerson(personId, nom, personMode) {
   document.getElementById('disc-director-results').style.display = 'none';
   document.getElementById('disc-director-search').value = '';
-  discoverState.mode = 'director';
+  discoverState.mode = 'person';
   discoverState.personId = personId;
+  discoverState.personMode = personMode || 'actor';
   discoverState.sourceTitre = nom;
   document.getElementById('discover-title').textContent = discoverTitleFor();
   const stdFilters = document.getElementById('disc-standard-filters');
@@ -1236,9 +1249,17 @@ async function selectDirector(personId, nom) {
   await runDiscover(1);
 }
 
+function switchPersonMode(mode) {
+  discoverState.personMode = mode;
+  document.getElementById('discover-title').textContent = discoverTitleFor();
+  renderDirectorChip();
+  runDiscover(1);
+}
+
 function clearDirectorFilter() {
   discoverState.mode = 'filters';
   discoverState.personId = null;
+  discoverState.personMode = null;
   discoverState.sourceTitre = '';
   document.getElementById('discover-title').textContent = discoverTitleFor();
   const stdFilters = document.getElementById('disc-standard-filters');
@@ -1250,9 +1271,21 @@ function clearDirectorFilter() {
 function renderDirectorChip() {
   const zone = document.getElementById('disc-director-chip');
   if (!zone) return;
-  if (discoverState.mode !== 'director') { zone.innerHTML = ''; return; }
-  zone.innerHTML = `<div class="actor-chip" style="margin-bottom:10px;">Realisateur : ${escapeHtml(discoverState.sourceTitre)} <button id="clear-director-chip">&times;</button></div>`;
+  if (discoverState.mode !== 'person') { zone.innerHTML = ''; return; }
+  const isDirector = discoverState.personMode === 'director';
+  zone.innerHTML = `
+    <div class="actor-chip" style="margin-bottom:10px;gap:10px;">
+      ${escapeHtml(discoverState.sourceTitre)}
+      <span class="person-mode-toggle">
+        <button class="pmt-btn ${isDirector ? 'active' : ''}" id="pmt-director">Realisateur</button>
+        <button class="pmt-btn ${!isDirector ? 'active' : ''}" id="pmt-actor">Acteur</button>
+      </span>
+      <button id="clear-director-chip">&times;</button>
+    </div>
+  `;
   document.getElementById('clear-director-chip').onclick = clearDirectorFilter;
+  document.getElementById('pmt-director').onclick = () => switchPersonMode('director');
+  document.getElementById('pmt-actor').onclick = () => switchPersonMode('actor');
 }
 
 async function runDiscover(page) {
@@ -1264,8 +1297,10 @@ async function runDiscover(page) {
   let url;
   if (discoverState.mode === 'similar') {
     url = `${API}/api/tmdb/similar/${discoverState.tmdbId}?page=${page}`;
-  } else if (discoverState.mode === 'director') {
-    url = `${API}/api/tmdb/director/${discoverState.personId}`;
+  } else if (discoverState.mode === 'person') {
+    url = discoverState.personMode === 'director'
+      ? `${API}/api/tmdb/director/${discoverState.personId}`
+      : `${API}/api/tmdb/actor/${discoverState.personId}`;
   } else {
     const params = new URLSearchParams({ sort_by: document.getElementById('disc-sort').value, page });
     const genreVals = discGenreMS ? discGenreMS.getSelected() : [];
@@ -1295,7 +1330,7 @@ async function runDiscover(page) {
       return;
     }
     data = await res.json();
-    if (discoverState.mode === 'director') {
+    if (discoverState.mode === 'person') {
       data = { page: 1, total_pages: 1, results: data.results };
     }
   } catch (e) {

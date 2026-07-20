@@ -530,6 +530,16 @@ async def tmdb_director(person_id: int):
         raise HTTPException(502, f"Erreur TMDb: {e}")
 
 
+@app.get("/api/tmdb/actor/{person_id}")
+async def tmdb_actor(person_id: int):
+    try:
+        return await tmdb.get_actor_filmography(person_id)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Erreur TMDb: {e}")
+
+
 @app.get("/")
 def serve_index():
     return FileResponse(STATIC_DIR / "index.html")

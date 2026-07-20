@@ -302,3 +302,21 @@ async def get_director_filmography(person_id: int) -> dict:
     return {
         "results": [_movie_summary(c) for c in directed],
     }
+
+
+async def get_actor_filmography(person_id: int, limit: int = 40) -> dict:
+    """Films ou cette personne apparait au casting, tries par popularite."""
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        resp = await client.get(
+            f"{TMDB_BASE}/person/{person_id}/movie_credits",
+            params={"api_key": _api_key(), "language": "fr-FR"},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    cast = data.get("cast", [])
+    cast.sort(key=lambda c: c.get("popularity") or 0, reverse=True)
+
+    return {
+        "results": [_movie_summary(c) for c in cast[:limit]],
+    }
