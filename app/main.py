@@ -40,8 +40,9 @@ def _row_to_dict(row) -> dict:
 @app.get("/api/films", response_model=list[FilmOut])
 def list_films(
     statut: str | None = None,
-    genre: str | None = None,
+    genre: list[str] | None = Query(default=None),
     acteur: str | None = None,
+    realisateur: str | None = None,
     plateforme: list[str] | None = Query(default=None),
     pays: str | None = None,
     duree_min: int | None = None,
@@ -58,11 +59,14 @@ def list_films(
         query += " AND statut = ?"
         params.append(statut)
     if genre:
-        query += " AND genres LIKE ?"
-        params.append(f"%{genre}%")
+        query += " AND (" + " OR ".join(["genres LIKE ?"] * len(genre)) + ")"
+        params.extend(f"%{g}%" for g in genre)
     if acteur:
         query += " AND acteurs LIKE ?"
         params.append(f"%{acteur}%")
+    if realisateur:
+        query += " AND realisateur LIKE ?"
+        params.append(f"%{realisateur}%")
     if plateforme:
         query += " AND (" + " OR ".join(["plateforme LIKE ?"] * len(plateforme)) + ")"
         params.extend(f"%{p}%" for p in plateforme)
@@ -155,19 +159,20 @@ def delete_film(film_id: int):
 
 @app.get("/api/films/random", response_model=FilmOut)
 def random_film(
-    genre: str | None = None,
+    genre: list[str] | None = Query(default=None),
     plateforme: list[str] | None = Query(default=None),
     duree_min: int | None = None,
     duree_max: int | None = None,
     pays: str | None = None,
+    realisateur: str | None = None,
     annee_min: int | None = None,
     annee_max: int | None = None,
 ):
     query = "SELECT * FROM films WHERE statut = 'avoir'"
     params: list = []
     if genre:
-        query += " AND genres LIKE ?"
-        params.append(f"%{genre}%")
+        query += " AND (" + " OR ".join(["genres LIKE ?"] * len(genre)) + ")"
+        params.extend(f"%{g}%" for g in genre)
     if plateforme:
         query += " AND (" + " OR ".join(["plateforme LIKE ?"] * len(plateforme)) + ")"
         params.extend(f"%{p}%" for p in plateforme)
@@ -180,6 +185,9 @@ def random_film(
     if pays:
         query += " AND pays LIKE ?"
         params.append(f"%{pays}%")
+    if realisateur:
+        query += " AND realisateur LIKE ?"
+        params.append(f"%{realisateur}%")
     if annee_min:
         query += " AND annee IS NOT NULL AND annee >= ?"
         params.append(annee_min)
@@ -469,7 +477,7 @@ async def tmdb_trailer(tmdb_id: int):
 
 @app.get("/api/tmdb/discover")
 async def tmdb_discover(
-    genre_id: int | None = None,
+    genre_id: str | None = None,
     provider_id: str | None = None,
     duree_min: int | None = None,
     duree_max: int | None = None,
@@ -496,6 +504,26 @@ async def tmdb_discover(
 async def tmdb_similar(tmdb_id: int, page: int = 1):
     try:
         return await tmdb.get_similar_movies(tmdb_id, page=page)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Erreur TMDb: {e}")
+
+
+@app.get("/api/tmdb/search-person")
+async def tmdb_search_person(q: str = Query(min_length=2)):
+    try:
+        return await tmdb.search_person(q)
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Erreur TMDb: {e}")
+
+
+@app.get("/api/tmdb/director/{person_id}")
+async def tmdb_director(person_id: int):
+    try:
+        return await tmdb.get_director_filmography(person_id)
     except RuntimeError as e:
         raise HTTPException(400, str(e))
     except Exception as e:

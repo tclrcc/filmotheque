@@ -192,7 +192,7 @@ async def get_watch_provider_list() -> list[dict]:
 
 
 async def discover_movies(
-    genre_id: int | None = None,
+    genre_id: str | None = None,
     provider_id: str | None = None,
     duree_min: int | None = None,
     duree_max: int | None = None,
@@ -205,8 +205,8 @@ async def discover_movies(
 ) -> dict:
     """Recherche dans tout le catalogue TMDb selon des criteres, independamment de la watchlist.
 
-    provider_id accepte plusieurs identifiants separes par '|' (syntaxe OR de TMDb),
-    par exemple '8|381' pour Netflix OU Canal+.
+    genre_id et provider_id acceptent plusieurs identifiants separes par '|' (syntaxe OR de TMDb),
+    par exemple '35|18' pour Comedie OU Drame.
     """
     params = {
         "api_key": _api_key(),
@@ -261,4 +261,44 @@ async def get_similar_movies(tmdb_id: int, page: int = 1) -> dict:
         "page": data.get("page", 1),
         "total_pages": data.get("total_pages", 1),
         "results": [_movie_summary(r) for r in data.get("results", [])],
+    }
+
+
+async def search_person(query: str, limit: int = 6) -> list[dict]:
+    """Recherche de realisateurs/acteurs par nom, pour l'auto-completion."""
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        resp = await client.get(
+            f"{TMDB_BASE}/search/person",
+            params={"api_key": _api_key(), "query": query, "language": "fr-FR", "include_adult": "false"},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    results = []
+    for p in data.get("results", [])[:limit]:
+        results.append({
+            "person_id": p["id"],
+            "nom": p.get("name"),
+            "photo_url": f"{TMDB_IMG_BASE}{p['profile_path']}" if p.get("profile_path") else None,
+            "connu_pour": p.get("known_for_department"),
+        })
+    return results
+
+
+async def get_director_filmography(person_id: int) -> dict:
+    """Tous les films realises par cette personne (credits en tant que realisateur)."""
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        resp = await client.get(
+            f"{TMDB_BASE}/person/{person_id}/movie_credits",
+            params={"api_key": _api_key(), "language": "fr-FR"},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    directed = [c for c in data.get("crew", []) if c.get("job") == "Director"]
+    # Plus recent en premier
+    directed.sort(key=lambda c: c.get("release_date") or "", reverse=True)
+
+    return {
+        "results": [_movie_summary(c) for c in directed],
     }

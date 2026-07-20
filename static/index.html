@@ -65,6 +65,26 @@
   .ms-item input { accent-color: var(--gold); cursor: pointer; }
   .ms-empty { font-size: 12px; color: var(--ink-faint); padding: 6px; }
 
+  .range-panel { min-width: 240px; padding: 14px 14px 10px; }
+  .range-slider { position: relative; height: 22px; margin: 6px 4px 8px; }
+  .range-track { position: absolute; top: 50%; left: 0; right: 0; height: 4px; background: var(--line); border-radius: 2px; transform: translateY(-50%); }
+  .range-track-fill { position: absolute; top: 50%; height: 4px; background: var(--gold); border-radius: 2px; transform: translateY(-50%); }
+  .range-slider input[type="range"] {
+    position: absolute; top: 0; left: 0; width: 100%; margin: 0; background: transparent;
+    -webkit-appearance: none; appearance: none; pointer-events: none; height: 22px;
+  }
+  .range-slider input[type="range"]::-webkit-slider-runnable-track { background: transparent; height: 22px; }
+  .range-slider input[type="range"]::-moz-range-track { background: transparent; height: 22px; }
+  .range-slider input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; pointer-events: auto; width: 15px; height: 15px; border-radius: 50%;
+    background: var(--gold); cursor: pointer; border: 2px solid var(--void); margin-top: 4px;
+  }
+  .range-slider input[type="range"]::-moz-range-thumb {
+    pointer-events: auto; width: 15px; height: 15px; border-radius: 50%;
+    background: var(--gold); cursor: pointer; border: 2px solid var(--void);
+  }
+  .range-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-dim); font-family: 'IBM Plex Mono', monospace; padding: 0 2px; }
+
   .addbtn {
     background: var(--gold); color: #1A1508; border: none; padding: 10px 18px;
     border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; white-space: nowrap;
@@ -171,6 +191,8 @@
   .ticket-title { font-size: 19px; color: var(--ink); line-height: 1.15; margin-bottom: 3px; overflow-wrap: break-word; }
   .ticket-year { font-size: 12px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; }
   .ticket-meta { font-size: 12px; color: var(--ink-dim); margin: 4px 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .realisateur-link { cursor: pointer; text-decoration: underline; text-decoration-color: transparent; transition: text-decoration-color 0.15s; }
+  .realisateur-link:hover { color: var(--gold); text-decoration-color: var(--gold); }
   .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
   .tag { font-size: 10.5px; padding: 2px 8px; border-radius: 20px; font-family: 'IBM Plex Mono', monospace; }
   .tag.genre { background: rgba(217,164,65,0.15); color: var(--gold); }
@@ -268,22 +290,27 @@
 
   <div class="toolbar">
     <input type="text" id="search" placeholder="Chercher un titre, un acteur, un realisateur..." />
-    <select id="filter-genre"><option value="">Tous genres</option></select>
+    <div class="ms-wrap" id="ms-genre">
+      <button type="button" class="ms-btn" id="ms-genre-btn">Tous genres</button>
+      <div class="ms-panel" id="ms-genre-panel"></div>
+    </div>
     <div class="ms-wrap" id="ms-plateforme">
       <button type="button" class="ms-btn" id="ms-plateforme-btn">Toutes plateformes</button>
       <div class="ms-panel" id="ms-plateforme-panel"></div>
     </div>
     <select id="filter-pays"><option value="">Tous pays</option></select>
-    <select id="filter-duree">
-      <option value="">Toutes durees</option>
-      <option value="max90">&le; 1h30</option>
-      <option value="max110">&le; 1h50</option>
-      <option value="max130">&le; 2h10</option>
-      <option value="max160">&le; 2h40</option>
-      <option value="min90">&gt; 1h30</option>
-      <option value="min120">&gt; 2h00</option>
-      <option value="min150">&gt; 2h30</option>
-    </select>
+    <div class="ms-wrap" id="ms-duree">
+      <button type="button" class="ms-btn" id="duree-range-btn">Toutes durees</button>
+      <div class="ms-panel range-panel" id="duree-range-panel">
+        <div class="range-slider">
+          <div class="range-track"></div>
+          <div class="range-track-fill" id="duree-track-fill"></div>
+          <input type="range" id="duree-min-input" min="0" max="240" step="5" value="0" />
+          <input type="range" id="duree-max-input" min="0" max="240" step="5" value="240" />
+        </div>
+        <div class="range-labels"><span id="duree-min-label">0h</span><span id="duree-max-label">4h+</span></div>
+      </div>
+    </div>
     <select id="filter-annee">
       <option value="">Toutes annees</option>
       <option value="2019">&lt; 2020</option>
@@ -342,13 +369,14 @@ let tmdbProviderCache = null;
 let tmdbGenreMap = {};
 const actorChipZone = document.getElementById('actor-chip-zone');
 const searchEl = document.getElementById('search');
-const genreFilterEl = document.getElementById('filter-genre');
 const paysFilterEl = document.getElementById('filter-pays');
-const dureeFilterEl = document.getElementById('filter-duree');
 const anneeFilterEl = document.getElementById('filter-annee');
 const statusFilterEl = document.getElementById('filter-status');
 const sortEl = document.getElementById('sort');
 let toolbarPlatformMS = null;
+let toolbarGenreMS = null;
+let toolbarDureeRange = null;
+let activeRealisateur = null;
 
 function escapeHtml(s) {
   return (s || '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -373,13 +401,6 @@ function flagFor(paysStr) {
   const first = splitTags(paysStr)[0] || '';
   const match = COUNTRY_FLAGS.find(([re]) => re.test(first));
   return match ? match[1] + ' ' : '';
-}
-
-function parseDureeFilter(value) {
-  if (!value) return {};
-  if (value.startsWith('max')) return { duree_max: value.slice(3) };
-  if (value.startsWith('min')) return { duree_min: value.slice(3) };
-  return {};
 }
 
 function setupMultiSelect(btnId, panelId, fetchOptions, onChange, defaultLabel) {
@@ -436,18 +457,80 @@ function setupMultiSelect(btnId, panelId, fetchOptions, onChange, defaultLabel) 
   };
 }
 
+const DUREE_RANGE_MAX = 240;
+function fmtDuree(v) {
+  if (v >= DUREE_RANGE_MAX) return '4h+';
+  const h = Math.floor(v / 60), m = v % 60;
+  return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+}
+
+function setupDurationRange(prefix, onChange) {
+  const minInput = document.getElementById(`${prefix}-min-input`);
+  const maxInput = document.getElementById(`${prefix}-max-input`);
+  const fill = document.getElementById(`${prefix}-track-fill`);
+  const minLabel = document.getElementById(`${prefix}-min-label`);
+  const maxLabel = document.getElementById(`${prefix}-max-label`);
+  const btn = document.getElementById(`${prefix}-range-btn`);
+  const panel = document.getElementById(`${prefix}-range-panel`);
+  let debounceT;
+
+  function refresh(fire) {
+    let minV = parseInt(minInput.value, 10);
+    let maxV = parseInt(maxInput.value, 10);
+    if (minV > maxV) { minV = maxV; minInput.value = minV; }
+    fill.style.left = (minV / DUREE_RANGE_MAX * 100) + '%';
+    fill.style.width = ((maxV - minV) / DUREE_RANGE_MAX * 100) + '%';
+    minLabel.textContent = fmtDuree(minV);
+    maxLabel.textContent = fmtDuree(maxV);
+    btn.textContent = (minV === 0 && maxV >= DUREE_RANGE_MAX) ? 'Toutes durees' : `${fmtDuree(minV)} - ${fmtDuree(maxV)}`;
+    if (fire) {
+      clearTimeout(debounceT);
+      debounceT = setTimeout(() => onChange(), 300);
+    }
+  }
+
+  minInput.oninput = () => refresh(true);
+  maxInput.oninput = () => refresh(true);
+  refresh(false);
+
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    document.querySelectorAll('.ms-panel.open').forEach(p => { if (p !== panel) p.classList.remove('open'); });
+    panel.classList.toggle('open');
+  };
+  document.addEventListener('click', (e) => {
+    if (!panel.contains(e.target) && e.target !== btn) panel.classList.remove('open');
+  });
+
+  return {
+    getValue() {
+      const minV = parseInt(minInput.value, 10);
+      const maxV = parseInt(maxInput.value, 10);
+      return { duree_min: minV > 0 ? minV : null, duree_max: maxV < DUREE_RANGE_MAX ? maxV : null };
+    },
+    reset() {
+      minInput.value = 0;
+      maxInput.value = DUREE_RANGE_MAX;
+      refresh(false);
+    },
+  };
+}
+
 async function loadFilms() {
   const params = new URLSearchParams();
   if (searchEl.value.trim()) params.set('search', searchEl.value.trim());
-  if (genreFilterEl.value) params.set('genre', genreFilterEl.value);
+  if (toolbarGenreMS) toolbarGenreMS.getSelected().forEach(g => params.append('genre', g));
   if (toolbarPlatformMS) toolbarPlatformMS.getSelected().forEach(p => params.append('plateforme', p));
   if (paysFilterEl.value) params.set('pays', paysFilterEl.value);
-  const dureeParsed = parseDureeFilter(dureeFilterEl.value);
-  if (dureeParsed.duree_max) params.set('duree_max', dureeParsed.duree_max);
-  if (dureeParsed.duree_min) params.set('duree_min', dureeParsed.duree_min);
+  if (toolbarDureeRange) {
+    const dv = toolbarDureeRange.getValue();
+    if (dv.duree_max) params.set('duree_max', dv.duree_max);
+    if (dv.duree_min) params.set('duree_min', dv.duree_min);
+  }
   if (anneeFilterEl.value) params.set('annee_max', anneeFilterEl.value);
   if (statusFilterEl.value) params.set('statut', statusFilterEl.value);
   if (activeActor) params.set('acteur', activeActor);
+  if (activeRealisateur) params.set('realisateur', activeRealisateur);
   params.set('sort', sortEl.value);
 
   const res = await fetch(`${API}/api/films?${params.toString()}`);
@@ -457,17 +540,18 @@ async function loadFilms() {
 }
 
 function renderActorChip() {
-  if (!activeActor) { actorChipZone.innerHTML = ''; return; }
-  actorChipZone.innerHTML = `
-    <div class="actor-chip">
-      Acteur : ${escapeHtml(activeActor)}
-      <button id="clear-actor-chip">&times;</button>
-    </div>
-  `;
-  document.getElementById('clear-actor-chip').onclick = () => {
-    activeActor = null;
-    loadFilms();
-  };
+  const chips = [];
+  if (activeActor) {
+    chips.push(`<div class="actor-chip">Acteur : ${escapeHtml(activeActor)} <button id="clear-actor-chip">&times;</button></div>`);
+  }
+  if (activeRealisateur) {
+    chips.push(`<div class="actor-chip">Realisateur : ${escapeHtml(activeRealisateur)} <button id="clear-realisateur-chip">&times;</button></div>`);
+  }
+  actorChipZone.innerHTML = chips.join(' ');
+  const clearActor = document.getElementById('clear-actor-chip');
+  if (clearActor) clearActor.onclick = () => { activeActor = null; loadFilms(); };
+  const clearReal = document.getElementById('clear-realisateur-chip');
+  if (clearReal) clearReal.onclick = () => { activeRealisateur = null; loadFilms(); };
 }
 
 function filterByActor(name) {
@@ -475,13 +559,24 @@ function filterByActor(name) {
   loadFilms();
 }
 
-async function loadGenres() {
-  const res = await fetch(`${API}/api/meta/genres`);
-  const genres = await res.json();
-  const current = genreFilterEl.value;
-  genreFilterEl.innerHTML = '<option value="">Tous genres</option>' +
-    genres.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
-  genreFilterEl.value = current;
+function filterByRealisateur(name) {
+  activeRealisateur = name;
+  loadFilms();
+}
+
+function initToolbarGenreMS() {
+  if (toolbarGenreMS) return toolbarGenreMS.loadOptions();
+  toolbarGenreMS = setupMultiSelect(
+    'ms-genre-btn', 'ms-genre-panel',
+    async () => {
+      const res = await fetch(`${API}/api/meta/genres`);
+      const list = res.ok ? await res.json() : [];
+      return list.map(g => ({ value: g, label: g }));
+    },
+    () => loadFilms(),
+    'Tous genres'
+  );
+  return toolbarGenreMS.loadOptions();
 }
 
 function initToolbarPlatformMS() {
@@ -529,7 +624,7 @@ function render() {
         ${posterHtml}
         <div class="ticket-main">
           <div class="ticket-title">${escapeHtml(f.titre)} ${f.annee ? `<span class="ticket-year">(${f.annee})</span>` : ''}</div>
-          <div class="ticket-meta" ${f.plateforme && splitTags(f.plateforme).length > 2 ? `title="${escapeHtml(formatPlateformes(f.plateforme, 2).full)}"` : ''}>${escapeHtml(f.realisateur || '')}${f.realisateur && f.plateforme ? ' &middot; ' : ''}${escapeHtml(formatPlateformes(f.plateforme, 2).label)}</div>
+          <div class="ticket-meta" ${f.plateforme && splitTags(f.plateforme).length > 2 ? `title="${escapeHtml(formatPlateformes(f.plateforme, 2).full)}"` : ''}>${f.realisateur ? `<span class="realisateur-link" data-realisateur="${escapeHtml(f.realisateur)}">${escapeHtml(f.realisateur)}</span>` : ''}${f.realisateur && f.plateforme ? ' &middot; ' : ''}${escapeHtml(formatPlateformes(f.plateforme, 2).label)}</div>
           <div class="tags">
             ${genres.map(g => `<span class="tag genre">${escapeHtml(g)}</span>`).join('')}
             ${acteurs.slice(0, 3).map(a => `<span class="tag actor" data-actor="${escapeHtml(a)}">${escapeHtml(a)}</span>`).join('')}
@@ -586,6 +681,10 @@ function render() {
     tag.onclick = () => filterByActor(tag.getAttribute('data-actor'));
   });
 
+  grid.querySelectorAll('.realisateur-link').forEach(el => {
+    el.onclick = () => filterByRealisateur(el.getAttribute('data-realisateur'));
+  });
+
   grid.querySelectorAll('[data-toggle-synopsis]').forEach(btn => {
     btn.onclick = () => {
       const el = document.getElementById(btn.getAttribute('data-toggle-synopsis'));
@@ -603,14 +702,14 @@ async function toggleStatus(id) {
     body: JSON.stringify({ statut: f.statut === 'vu' ? 'avoir' : 'vu' }),
   });
   await loadFilms();
-  await loadGenres();
+  if (toolbarGenreMS) await toolbarGenreMS.loadOptions();
 }
 
 async function deleteFilm(id) {
   if (!confirm('Retirer ce film de la filmotheque ?')) return;
   await fetch(`${API}/api/films/${id}`, { method: 'DELETE' });
   await loadFilms();
-  await loadGenres();
+  if (toolbarGenreMS) await toolbarGenreMS.loadOptions();
 }
 
 function openModal(existing) {
@@ -839,7 +938,7 @@ async function onSaveModal() {
   }
   closeModal();
   await loadFilms();
-  await loadGenres();
+  if (toolbarGenreMS) await toolbarGenreMS.loadOptions();
 }
 
 async function openRoulette() {
@@ -866,13 +965,16 @@ async function drawRoulette() {
   card.innerHTML = `<div class="roulette-eyebrow">SEANCE SURPRISE</div><div style="color:var(--ink-faint);font-size:13px;">Tirage en cours...</div>`;
 
   const params = new URLSearchParams();
-  if (genreFilterEl.value) params.set('genre', genreFilterEl.value);
+  if (toolbarGenreMS) toolbarGenreMS.getSelected().forEach(g => params.append('genre', g));
   if (toolbarPlatformMS) toolbarPlatformMS.getSelected().forEach(p => params.append('plateforme', p));
-  const dureeParsedR = parseDureeFilter(dureeFilterEl.value);
-  if (dureeParsedR.duree_max) params.set('duree_max', dureeParsedR.duree_max);
-  if (dureeParsedR.duree_min) params.set('duree_min', dureeParsedR.duree_min);
+  if (toolbarDureeRange) {
+    const dvR = toolbarDureeRange.getValue();
+    if (dvR.duree_max) params.set('duree_max', dvR.duree_max);
+    if (dvR.duree_min) params.set('duree_min', dvR.duree_min);
+  }
   if (paysFilterEl.value) params.set('pays', paysFilterEl.value);
   if (anneeFilterEl.value) params.set('annee_max', anneeFilterEl.value);
+  if (activeRealisateur) params.set('realisateur', activeRealisateur);
 
   const res = await fetch(`${API}/api/films/random?${params.toString()}`);
   if (!res.ok) {
@@ -927,9 +1029,7 @@ document.getElementById('suggestionsbtn').onclick = () => openSuggestions();
 document.getElementById('exportbtn').onclick = () => { window.location.href = `${API}/api/films/export.csv`; };
 let debounce;
 searchEl.oninput = () => { clearTimeout(debounce); debounce = setTimeout(loadFilms, 250); };
-genreFilterEl.onchange = loadFilms;
 paysFilterEl.onchange = loadFilms;
-dureeFilterEl.onchange = loadFilms;
 anneeFilterEl.onchange = loadFilms;
 statusFilterEl.onchange = loadFilms;
 sortEl.onchange = loadFilms;
@@ -956,6 +1056,8 @@ async function ensureTmdbMeta() {
 let discoverState = { mode: 'filters', tmdbId: null, sourceTitre: '', page: 1, results: [], addedIds: new Set() };
 let watchlistTmdbIds = new Set();
 let discProviderMS = null;
+let discGenreMS = null;
+let discDureeRange = null;
 
 async function refreshWatchlistTmdbIds() {
   try {
@@ -966,14 +1068,14 @@ async function refreshWatchlistTmdbIds() {
 }
 
 async function openDiscover(opts) {
-  discoverState = { mode: opts.mode, tmdbId: opts.tmdbId || null, sourceTitre: opts.sourceTitre || '', page: 1, results: [], addedIds: new Set() };
+  discoverState = { mode: opts.mode, tmdbId: opts.tmdbId || null, personId: opts.personId || null, sourceTitre: opts.sourceTitre || '', page: 1, results: [], addedIds: new Set() };
   await refreshWatchlistTmdbIds();
 
   discoverRoot.innerHTML = `
     <div class="discover-backdrop" id="discover-backdrop">
       <div class="discover-panel">
         <div class="discover-header">
-          <h3>${discoverState.mode === 'similar' ? 'Similaires a ' + escapeHtml(discoverState.sourceTitre) : 'Decouvrir de nouveaux films'}</h3>
+          <h3 id="discover-title">${discoverTitleFor()}</h3>
           <button class="discover-close-x" id="discover-close-x">&times;</button>
         </div>
         <div id="discover-toolbar-zone"></div>
@@ -987,14 +1089,20 @@ async function openDiscover(opts) {
   document.getElementById('discover-backdrop').onclick = (e) => { if (e.target.id === 'discover-backdrop') closeDiscover(); };
   document.getElementById('discover-close-x').onclick = closeDiscover;
 
-  if (discoverState.mode === 'filters') {
+  if (discoverState.mode === 'filters' || discoverState.mode === 'director') {
     await ensureTmdbMeta();
     const toolbarZone = document.getElementById('discover-toolbar-zone');
     toolbarZone.innerHTML = `
-      <div class="discover-toolbar">
-        <select id="disc-genre"><option value="">Tous genres</option>
-          ${tmdbGenreCache.map(g => `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('')}
-        </select>
+      <div class="tmdb-search-wrap" style="margin-bottom:10px;">
+        <input type="text" id="disc-director-search" placeholder="Chercher un realisateur (ex: Tarantino)..." autocomplete="off" />
+        <div class="tmdb-results" id="disc-director-results" style="display:none;"></div>
+      </div>
+      <div id="disc-director-chip"></div>
+      <div class="discover-toolbar" id="disc-standard-filters" style="${discoverState.mode === 'director' ? 'display:none;' : ''}">
+        <div class="ms-wrap" id="ms-disc-genre">
+          <button type="button" class="ms-btn" id="ms-disc-genre-btn">Tous genres</button>
+          <div class="ms-panel" id="ms-disc-genre-panel"></div>
+        </div>
         <div class="ms-wrap" id="ms-disc-provider">
           <button type="button" class="ms-btn" id="ms-disc-provider-btn">Toutes plateformes</button>
           <div class="ms-panel" id="ms-disc-provider-panel"></div>
@@ -1010,16 +1118,18 @@ async function openDiscover(opts) {
           <option value="ES">Espagne</option>
           <option value="DE">Allemagne</option>
         </select>
-        <select id="disc-duree">
-          <option value="">Toutes durees</option>
-          <option value="max90">&le; 1h30</option>
-          <option value="max110">&le; 1h50</option>
-          <option value="max130">&le; 2h10</option>
-          <option value="max160">&le; 2h40</option>
-          <option value="min90">&gt; 1h30</option>
-          <option value="min120">&gt; 2h00</option>
-          <option value="min150">&gt; 2h30</option>
-        </select>
+        <div class="ms-wrap" id="ms-disc-duree">
+          <button type="button" class="ms-btn" id="disc-duree-range-btn">Toutes durees</button>
+          <div class="ms-panel range-panel" id="disc-duree-range-panel">
+            <div class="range-slider">
+              <div class="range-track"></div>
+              <div class="range-track-fill" id="disc-duree-track-fill"></div>
+              <input type="range" id="disc-duree-min-input" min="0" max="240" step="5" value="0" />
+              <input type="range" id="disc-duree-max-input" min="0" max="240" step="5" value="240" />
+            </div>
+            <div class="range-labels"><span id="disc-duree-min-label">0h</span><span id="disc-duree-max-label">4h+</span></div>
+          </div>
+        </div>
         <select id="disc-annee">
           <option value="">Toutes annees</option>
           <option value="2019">&lt; 2020</option>
@@ -1041,7 +1151,7 @@ async function openDiscover(opts) {
         </select>
       </div>
     `;
-    ['disc-genre', 'disc-pays', 'disc-duree', 'disc-annee', 'disc-note', 'disc-sort'].forEach(id => {
+    ['disc-pays', 'disc-annee', 'disc-note', 'disc-sort'].forEach(id => {
       document.getElementById(id).onchange = () => runDiscover(1);
     });
     discProviderMS = setupMultiSelect(
@@ -1051,6 +1161,17 @@ async function openDiscover(opts) {
       'Toutes plateformes'
     );
     await discProviderMS.loadOptions();
+    discGenreMS = setupMultiSelect(
+      'ms-disc-genre-btn', 'ms-disc-genre-panel',
+      async () => tmdbGenreCache.map(g => ({ value: g.id, label: g.name })),
+      () => runDiscover(1),
+      'Tous genres'
+    );
+    await discGenreMS.loadOptions();
+    discDureeRange = setupDurationRange('disc-duree', () => runDiscover(1));
+
+    setupDirectorSearch();
+    renderDirectorChip();
   } else {
     document.getElementById('discover-toolbar-zone').innerHTML = '';
   }
@@ -1062,6 +1183,78 @@ function closeDiscover() {
   discoverRoot.innerHTML = '';
 }
 
+function discoverTitleFor() {
+  if (discoverState.mode === 'similar') return 'Similaires a ' + escapeHtml(discoverState.sourceTitre);
+  if (discoverState.mode === 'director') return 'Films de ' + escapeHtml(discoverState.sourceTitre);
+  return 'Decouvrir de nouveaux films';
+}
+
+let discDirectorSearchTimeout = null;
+
+function setupDirectorSearch() {
+  const input = document.getElementById('disc-director-search');
+  if (!input) return;
+  input.addEventListener('input', (e) => {
+    clearTimeout(discDirectorSearchTimeout);
+    const q = e.target.value.trim();
+    const resultsEl = document.getElementById('disc-director-results');
+    if (q.length < 2) { resultsEl.style.display = 'none'; return; }
+    discDirectorSearchTimeout = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API}/api/tmdb/search-person?q=${encodeURIComponent(q)}`);
+        if (!res.ok) { resultsEl.style.display = 'none'; return; }
+        const people = await res.json();
+        if (people.length === 0) { resultsEl.style.display = 'none'; return; }
+        resultsEl.innerHTML = people.map(p => `
+          <div class="tmdb-result-item" data-person-id="${p.person_id}" data-person-nom="${escapeHtml(p.nom)}">
+            <img src="${p.photo_url || ''}" alt="" />
+            <div>
+              <div class="rt">${escapeHtml(p.nom)}</div>
+              <div class="ry">${escapeHtml(p.connu_pour || '')}</div>
+            </div>
+          </div>
+        `).join('');
+        resultsEl.style.display = 'block';
+        resultsEl.querySelectorAll('[data-person-id]').forEach(item => {
+          item.onclick = () => selectDirector(parseInt(item.getAttribute('data-person-id'), 10), item.getAttribute('data-person-nom'));
+        });
+      } catch (e) { resultsEl.style.display = 'none'; }
+    }, 350);
+  });
+}
+
+async function selectDirector(personId, nom) {
+  document.getElementById('disc-director-results').style.display = 'none';
+  document.getElementById('disc-director-search').value = '';
+  discoverState.mode = 'director';
+  discoverState.personId = personId;
+  discoverState.sourceTitre = nom;
+  document.getElementById('discover-title').textContent = discoverTitleFor();
+  const stdFilters = document.getElementById('disc-standard-filters');
+  if (stdFilters) stdFilters.style.display = 'none';
+  renderDirectorChip();
+  await runDiscover(1);
+}
+
+function clearDirectorFilter() {
+  discoverState.mode = 'filters';
+  discoverState.personId = null;
+  discoverState.sourceTitre = '';
+  document.getElementById('discover-title').textContent = discoverTitleFor();
+  const stdFilters = document.getElementById('disc-standard-filters');
+  if (stdFilters) stdFilters.style.display = '';
+  renderDirectorChip();
+  runDiscover(1);
+}
+
+function renderDirectorChip() {
+  const zone = document.getElementById('disc-director-chip');
+  if (!zone) return;
+  if (discoverState.mode !== 'director') { zone.innerHTML = ''; return; }
+  zone.innerHTML = `<div class="actor-chip" style="margin-bottom:10px;">Realisateur : ${escapeHtml(discoverState.sourceTitre)} <button id="clear-director-chip">&times;</button></div>`;
+  document.getElementById('clear-director-chip').onclick = clearDirectorFilter;
+}
+
 async function runDiscover(page) {
   discoverState.page = page;
   const gridEl = document.getElementById('discover-grid');
@@ -1071,20 +1264,23 @@ async function runDiscover(page) {
   let url;
   if (discoverState.mode === 'similar') {
     url = `${API}/api/tmdb/similar/${discoverState.tmdbId}?page=${page}`;
+  } else if (discoverState.mode === 'director') {
+    url = `${API}/api/tmdb/director/${discoverState.personId}`;
   } else {
     const params = new URLSearchParams({ sort_by: document.getElementById('disc-sort').value, page });
-    const genreVal = document.getElementById('disc-genre').value;
+    const genreVals = discGenreMS ? discGenreMS.getSelected() : [];
     const providerVals = discProviderMS ? discProviderMS.getSelected() : [];
     const paysVal = document.getElementById('disc-pays').value;
-    const dureeVal = document.getElementById('disc-duree').value;
     const anneeVal = document.getElementById('disc-annee').value;
     const noteVal = document.getElementById('disc-note').value;
-    if (genreVal) params.set('genre_id', genreVal);
+    if (genreVals.length) params.set('genre_id', genreVals.join('|'));
     if (providerVals.length) params.set('provider_id', providerVals.join('|'));
     if (paysVal) params.set('origin_country', paysVal);
-    const dureeParsedD = parseDureeFilter(dureeVal);
-    if (dureeParsedD.duree_max) params.set('duree_max', dureeParsedD.duree_max);
-    if (dureeParsedD.duree_min) params.set('duree_min', dureeParsedD.duree_min);
+    if (discDureeRange) {
+      const dv = discDureeRange.getValue();
+      if (dv.duree_max) params.set('duree_max', dv.duree_max);
+      if (dv.duree_min) params.set('duree_min', dv.duree_min);
+    }
     if (anneeVal) params.set('annee_max', anneeVal);
     if (noteVal) params.set('note_min', noteVal);
     url = `${API}/api/tmdb/discover?${params.toString()}`;
@@ -1099,6 +1295,9 @@ async function runDiscover(page) {
       return;
     }
     data = await res.json();
+    if (discoverState.mode === 'director') {
+      data = { page: 1, total_pages: 1, results: data.results };
+    }
   } catch (e) {
     gridEl.innerHTML = '<div class="discover-empty">Erreur reseau TMDb.</div>';
     return;
@@ -1196,7 +1395,7 @@ async function addFromDiscover(tmdbId, btn) {
     const card = btn.closest('.discover-card');
     if (card) card.remove();
     await loadFilms();
-    await loadGenres();
+    if (toolbarGenreMS) await toolbarGenreMS.loadOptions();
     if (toolbarPlatformMS) await toolbarPlatformMS.loadOptions();
     await loadPays();
   } catch (e) {
@@ -1380,8 +1579,9 @@ function closeStats() {
 }
 
 loadFilms();
-loadGenres();
+initToolbarGenreMS();
 initToolbarPlatformMS();
+toolbarDureeRange = setupDurationRange('duree', () => loadFilms());
 loadPays();
 </script>
 </body>
