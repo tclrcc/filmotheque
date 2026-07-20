@@ -170,7 +170,7 @@
   .ticket-main { flex: 1; padding: 14px 14px 14px 14px; min-width: 0; }
   .ticket-title { font-size: 19px; color: var(--ink); line-height: 1.15; margin-bottom: 3px; overflow-wrap: break-word; }
   .ticket-year { font-size: 12px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; }
-  .ticket-meta { font-size: 12px; color: var(--ink-dim); margin: 4px 0 8px; }
+  .ticket-meta { font-size: 12px; color: var(--ink-dim); margin: 4px 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
   .tag { font-size: 10.5px; padding: 2px 8px; border-radius: 20px; font-family: 'IBM Plex Mono', monospace; }
   .tag.genre { background: rgba(217,164,65,0.15); color: var(--gold); }
@@ -178,6 +178,7 @@
   .tag.actor:hover { background: rgba(47,110,104,0.4); }
   .tag.duree { background: rgba(163,163,163,0.15); color: var(--ink-dim); }
   .tag.note-tmdb { background: rgba(217,164,65,0.28); color: var(--gold); font-weight: 600; }
+  .tag.pays { background: rgba(111,143,189,0.18); color: #8FB3E0; }
 
   .synopsis-toggle { background: none; border: none; color: var(--ink-faint); font-size: 11px; cursor: pointer; padding: 0; margin-top: 6px; text-decoration: underline; font-family: 'Work Sans', sans-serif; }
   .synopsis-text { font-size: 12.5px; color: var(--ink-dim); margin-top: 6px; line-height: 1.4; display: none; }
@@ -206,6 +207,28 @@
   .statusbtn { background: none; border: 1px solid var(--line); color: var(--ink-dim); font-size: 10px; padding: 4px 6px; border-radius: 6px; cursor: pointer; font-family: 'IBM Plex Mono', monospace; text-align: center; width: 100%; }
   .statusbtn.vu-active { background: var(--teal); color: #fff; border-color: var(--teal); }
   .delbtn { background: none; border: none; color: var(--ink-faint); cursor: pointer; font-size: 15px; padding: 0; }
+
+  .stub-more-wrap { position: relative; width: 100%; }
+  .stub-more-btn {
+    width: 100%; background: none; border: 1px solid var(--line); color: var(--ink-faint);
+    font-size: 10px; padding: 4px 6px; border-radius: 6px; cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace; text-align: center;
+  }
+  .stub-more-btn:hover { color: var(--ink); border-color: var(--gold-dim); }
+  .stub-more-panel {
+    position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--void);
+    border: 1px solid var(--line); border-radius: 8px; padding: 4px; min-width: 150px;
+    z-index: 40; display: none;
+  }
+  .stub-more-panel.open { display: block; }
+  .stub-more-panel button {
+    display: block; width: 100%; text-align: left; background: none; border: none;
+    color: var(--ink-dim); font-size: 12px; padding: 7px 9px; border-radius: 5px;
+    cursor: pointer; font-family: 'IBM Plex Mono', monospace;
+  }
+  .stub-more-panel button:hover { background: var(--card-hi); color: var(--ink); }
+  .stub-more-panel button.danger { color: var(--velvet); }
+  .stub-more-panel button.danger:hover { background: rgba(167,58,70,0.12); }
   .delbtn:hover { color: var(--velvet); }
 
   .empty-state { text-align: center; padding: 3.5rem 1rem; color: var(--ink-faint); font-size: 14px; grid-column: 1/-1; }
@@ -331,6 +354,26 @@ function escapeHtml(s) {
   return (s || '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function splitTags(str) { return (str || '').split(',').map(s => s.trim()).filter(Boolean); }
+
+function formatPlateformes(str, maxShown) {
+  const list = splitTags(str);
+  if (list.length === 0) return { label: '', full: '' };
+  if (list.length <= maxShown) return { label: list.join(', '), full: list.join(', ') };
+  return { label: list.slice(0, maxShown).join(', ') + ` +${list.length - maxShown}`, full: list.join(', ') };
+}
+
+const COUNTRY_FLAGS = [
+  [/france/i, '🇫🇷'], [/(etats-unis|états-unis|united states|usa)/i, '🇺🇸'],
+  [/(royaume-uni|united kingdom)/i, '🇬🇧'], [/(coree du sud|corée du sud|south korea)/i, '🇰🇷'],
+  [/japon|japan/i, '🇯🇵'], [/italie|italy/i, '🇮🇹'], [/espagne|spain/i, '🇪🇸'],
+  [/allemagne|germany/i, '🇩🇪'], [/canada/i, '🇨🇦'], [/belgique|belgium/i, '🇧🇪'],
+  [/chine|china/i, '🇨🇳'], [/inde|india/i, '🇮🇳'],
+];
+function flagFor(paysStr) {
+  const first = splitTags(paysStr)[0] || '';
+  const match = COUNTRY_FLAGS.find(([re]) => re.test(first));
+  return match ? match[1] + ' ' : '';
+}
 
 function parseDureeFilter(value) {
   if (!value) return {};
@@ -486,13 +529,13 @@ function render() {
         ${posterHtml}
         <div class="ticket-main">
           <div class="ticket-title">${escapeHtml(f.titre)} ${f.annee ? `<span class="ticket-year">(${f.annee})</span>` : ''}</div>
-          <div class="ticket-meta">${escapeHtml(f.realisateur || '')}${f.realisateur && f.plateforme ? ' &middot; ' : ''}${escapeHtml(f.plateforme || '')}</div>
+          <div class="ticket-meta" ${f.plateforme && splitTags(f.plateforme).length > 2 ? `title="${escapeHtml(formatPlateformes(f.plateforme, 2).full)}"` : ''}>${escapeHtml(f.realisateur || '')}${f.realisateur && f.plateforme ? ' &middot; ' : ''}${escapeHtml(formatPlateformes(f.plateforme, 2).label)}</div>
           <div class="tags">
             ${genres.map(g => `<span class="tag genre">${escapeHtml(g)}</span>`).join('')}
             ${acteurs.slice(0, 3).map(a => `<span class="tag actor" data-actor="${escapeHtml(a)}">${escapeHtml(a)}</span>`).join('')}
             ${dureeLabel ? `<span class="tag duree">${dureeLabel}</span>` : ''}
             ${f.note_tmdb ? `<span class="tag note-tmdb">TMDb ${f.note_tmdb}</span>` : ''}
-            ${f.pays ? `<span class="tag duree">${escapeHtml(f.pays)}</span>` : ''}
+            ${f.pays ? `<span class="tag pays">${flagFor(f.pays)}${escapeHtml(f.pays)}</span>` : ''}
           </div>
           ${f.statut === 'vu' && f.commentaire ? `<div class="comment">${escapeHtml(f.commentaire)}</div>` : ''}
           ${f.synopsis ? `
@@ -503,10 +546,15 @@ function render() {
         <div class="ticket-stub">
           ${f.note !== null && f.note !== undefined ? `<div class="note">${f.note}</div>` : `<div class="note empty">--</div>`}
           <button class="statusbtn ${f.statut === 'vu' ? 'vu-active' : ''}" data-action="toggle" data-id="${f.id}">${f.statut === 'vu' ? 'VU' : 'A VOIR'}</button>
-          <button class="statusbtn" data-action="edit" data-id="${f.id}">Editer</button>
-          ${f.tmdb_id ? `<button class="statusbtn" data-action="similar" data-tmdb-id="${f.tmdb_id}" data-titre="${escapeHtml(f.titre)}">Similaires</button>` : ''}
-          ${f.tmdb_id ? `<button class="statusbtn" data-action="trailer" data-tmdb-id="${f.tmdb_id}">Bande-annonce</button>` : ''}
-          <button class="delbtn" data-action="delete" data-id="${f.id}">&times;</button>
+          <div class="stub-more-wrap">
+            <button class="stub-more-btn" data-more-toggle="${f.id}">&#8942; Plus</button>
+            <div class="stub-more-panel" id="stub-more-${f.id}">
+              <button data-action="edit" data-id="${f.id}">Editer</button>
+              ${f.tmdb_id ? `<button data-action="similar" data-tmdb-id="${f.tmdb_id}" data-titre="${escapeHtml(f.titre)}">Similaires</button>` : ''}
+              ${f.tmdb_id ? `<button data-action="trailer" data-tmdb-id="${f.tmdb_id}">Bande-annonce</button>` : ''}
+              <button data-action="delete" data-id="${f.id}" class="danger">Supprimer</button>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -521,6 +569,16 @@ function render() {
       else if (action === 'edit') openModal(films.find(f => f.id === id));
       else if (action === 'similar') openDiscover({ mode: 'similar', tmdbId: parseInt(btn.getAttribute('data-tmdb-id'), 10), sourceTitre: btn.getAttribute('data-titre') });
       else if (action === 'trailer') openTrailer(parseInt(btn.getAttribute('data-tmdb-id'), 10), btn);
+    };
+  });
+
+  grid.querySelectorAll('[data-more-toggle]').forEach(btn => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const panel = document.getElementById(`stub-more-${btn.getAttribute('data-more-toggle')}`);
+      const isOpen = panel.classList.contains('open');
+      grid.querySelectorAll('.stub-more-panel.open').forEach(p => p.classList.remove('open'));
+      if (!isOpen) panel.classList.add('open');
     };
   });
 
@@ -836,7 +894,7 @@ async function drawRoulette() {
     <div class="roulette-eyebrow">SEANCE SURPRISE</div>
     ${f.poster_url ? `<img class="roulette-poster" src="${escapeHtml(f.poster_url)}" alt="" />` : ''}
     <div class="roulette-title">${escapeHtml(f.titre)}</div>
-    <div class="roulette-meta">${escapeHtml(f.realisateur || '')}${genres.length ? ' &middot; ' + genres.join(', ') : ''}${dureeLabel ? ' &middot; ' + dureeLabel : ''}${f.plateforme ? ' &middot; ' + escapeHtml(f.plateforme) : ''}</div>
+    <div class="roulette-meta">${escapeHtml(f.realisateur || '')}${genres.length ? ' &middot; ' + genres.join(', ') : ''}${dureeLabel ? ' &middot; ' + dureeLabel : ''}${f.plateforme ? ' &middot; ' + escapeHtml(formatPlateformes(f.plateforme, 3).label) : ''}</div>
     ${f.synopsis ? `<div style="font-size:12.5px;color:var(--ink-dim);text-align:left;margin-bottom:14px;line-height:1.4;">${escapeHtml(f.synopsis)}</div>` : ''}
     <div class="roulette-actions">
       <button class="btn-cancel" id="roulette-again">Une autre</button>
@@ -854,6 +912,12 @@ async function drawRoulette() {
     closeRoulette();
   };
 }
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.stub-more-wrap')) {
+    document.querySelectorAll('.stub-more-panel.open').forEach(p => p.classList.remove('open'));
+  }
+});
 
 document.getElementById('addbtn').onclick = () => openModal(null);
 document.getElementById('roulettebtn').onclick = openRoulette;
