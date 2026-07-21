@@ -57,6 +57,14 @@
   .confirm-card p { font-size: 14px; color: var(--ink); margin-bottom: 18px; }
   .confirm-actions { display: flex; gap: 8px; justify-content: center; }
 
+  .dup-group { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+  .dup-group-title { font-size: 13px; color: var(--ink-dim); margin-bottom: 8px; }
+  .dup-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .dup-row:first-of-type { border-top: none; }
+  .dup-row img { width: 32px; height: 48px; object-fit: cover; border-radius: 3px; background: var(--void); flex-shrink: 0; }
+  .dup-row-info { flex: 1; font-size: 12.5px; color: var(--ink); }
+  .dup-row-meta { font-size: 10.5px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; }
+
   .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 1.5rem; align-items: center; }
   .toolbar-top { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
   .filters-toggle-btn {
@@ -278,20 +286,19 @@
     font-family: 'IBM Plex Mono', monospace; text-align: center;
   }
   .stub-more-btn:hover { color: var(--ink); border-color: var(--gold-dim); }
-  .stub-more-panel {
-    position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--void);
-    border: 1px solid var(--line); border-radius: 8px; padding: 4px; min-width: 150px;
-    z-index: 40; display: none;
+  .card-menu-panel {
+    position: fixed; background: var(--void); border: 1px solid var(--line); border-radius: 8px;
+    padding: 4px; min-width: 150px; z-index: 300; display: none;
   }
-  .stub-more-panel.open { display: block; }
-  .stub-more-panel button {
+  .card-menu-panel.open { display: block; }
+  .card-menu-panel button {
     display: block; width: 100%; text-align: left; background: none; border: none;
     color: var(--ink-dim); font-size: 12px; padding: 7px 9px; border-radius: 5px;
     cursor: pointer; font-family: 'IBM Plex Mono', monospace;
   }
-  .stub-more-panel button:hover { background: var(--card-hi); color: var(--ink); }
-  .stub-more-panel button.danger { color: var(--velvet); }
-  .stub-more-panel button.danger:hover { background: rgba(167,58,70,0.12); }
+  .card-menu-panel button:hover { background: var(--card-hi); color: var(--ink); }
+  .card-menu-panel button.danger { color: var(--velvet); }
+  .card-menu-panel button.danger:hover { background: rgba(167,58,70,0.12); }
   .delbtn:hover { color: var(--velvet); }
 
   .empty-state { text-align: center; padding: 3.5rem 1rem; color: var(--ink-faint); font-size: 14px; grid-column: 1/-1; }
@@ -381,6 +388,7 @@
     <button class="discoverbtn" id="discoverbtn">Decouvrir</button>
     <button class="suggestionsbtn" id="suggestionsbtn">Suggestions</button>
     <button class="statsbtn" id="statsbtn">Statistiques</button>
+    <button class="statsbtn" id="duplicatesbtn">Doublons</button>
     <button class="exportbtn" id="exportbtn">Export CSV</button>
   </div>
 
@@ -396,6 +404,8 @@
 <div id="suggestions-root"></div>
 <div id="confirm-root"></div>
 <div id="toast-zone" class="toast-zone"></div>
+<div id="card-menu-root"></div>
+<div id="duplicates-root"></div>
 
 <script>
 const API = '';
@@ -722,12 +732,6 @@ function render() {
           <button class="statusbtn ${f.statut === 'vu' ? 'vu-active' : ''}" data-action="toggle" data-id="${f.id}">${f.statut === 'vu' ? 'VU' : 'A VOIR'}</button>
           <div class="stub-more-wrap">
             <button class="stub-more-btn" data-more-toggle="${f.id}">&#8942; Plus</button>
-            <div class="stub-more-panel" id="stub-more-${f.id}">
-              <button data-action="edit" data-id="${f.id}">Editer</button>
-              ${f.tmdb_id ? `<button data-action="similar" data-tmdb-id="${f.tmdb_id}" data-titre="${escapeHtml(f.titre)}">Similaires</button>` : ''}
-              ${f.tmdb_id ? `<button data-action="trailer" data-tmdb-id="${f.tmdb_id}">Bande-annonce</button>` : ''}
-              <button data-action="delete" data-id="${f.id}" class="danger">Supprimer</button>
-            </div>
           </div>
         </div>
       </div>
@@ -749,10 +753,7 @@ function render() {
   grid.querySelectorAll('[data-more-toggle]').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
-      const panel = document.getElementById(`stub-more-${btn.getAttribute('data-more-toggle')}`);
-      const isOpen = panel.classList.contains('open');
-      grid.querySelectorAll('.stub-more-panel.open').forEach(p => p.classList.remove('open'));
-      if (!isOpen) panel.classList.add('open');
+      openCardMenu(btn, parseInt(btn.getAttribute('data-more-toggle'), 10));
     };
   });
 
@@ -1014,14 +1015,20 @@ async function onSaveModal() {
   }
 
   const wasEditing = !!editingId;
+  let res;
   if (editingId) {
-    await fetch(`${API}/api/films/${editingId}`, {
+    res = await fetch(`${API}/api/films/${editingId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
     });
   } else {
-    await fetch(`${API}/api/films`, {
+    res = await fetch(`${API}/api/films`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
     });
+  }
+  if (!res.ok) {
+    const err = await res.json();
+    showToast(err.detail || 'Erreur lors de l\'enregistrement.', 'error');
+    return;
   }
   closeModal();
   await loadFilms();
@@ -1104,11 +1111,59 @@ async function drawRoulette() {
   };
 }
 
+function closeCardMenu() {
+  document.getElementById('card-menu-root').innerHTML = '';
+}
+
+function openCardMenu(btn, filmId) {
+  const root = document.getElementById('card-menu-root');
+  const alreadyOpenFor = root.getAttribute('data-open-for');
+  closeCardMenu();
+  if (alreadyOpenFor === String(filmId)) return; // clic sur le meme bouton -> juste fermer
+
+  const f = films.find(x => x.id === filmId);
+  if (!f) return;
+
+  root.innerHTML = `
+    <div class="card-menu-panel open" id="card-menu-panel">
+      <button data-action="edit" data-id="${f.id}">Editer</button>
+      ${f.tmdb_id ? `<button data-action="similar" data-tmdb-id="${f.tmdb_id}" data-titre="${escapeHtml(f.titre)}">Similaires</button>` : ''}
+      ${f.tmdb_id ? `<button data-action="trailer" data-tmdb-id="${f.tmdb_id}">Bande-annonce</button>` : ''}
+      <button data-action="delete" data-id="${f.id}" class="danger">Supprimer</button>
+    </div>
+  `;
+  root.setAttribute('data-open-for', String(filmId));
+
+  const panel = document.getElementById('card-menu-panel');
+  const rect = btn.getBoundingClientRect();
+  const panelWidth = panel.offsetWidth || 150;
+  let left = rect.right - panelWidth;
+  left = Math.max(8, Math.min(left, window.innerWidth - panelWidth - 8));
+  let top = rect.bottom + 4;
+  const panelHeight = panel.offsetHeight || 140;
+  if (top + panelHeight > window.innerHeight - 8) top = rect.top - panelHeight - 4;
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+
+  panel.querySelectorAll('[data-action]').forEach(actionBtn => {
+    const id = parseInt(actionBtn.getAttribute('data-id'), 10);
+    const action = actionBtn.getAttribute('data-action');
+    actionBtn.onclick = () => {
+      closeCardMenu();
+      if (action === 'edit') openModal(films.find(x => x.id === id));
+      else if (action === 'delete') deleteFilm(id);
+      else if (action === 'similar') openDiscover({ mode: 'similar', tmdbId: parseInt(actionBtn.getAttribute('data-tmdb-id'), 10), sourceTitre: actionBtn.getAttribute('data-titre') });
+      else if (action === 'trailer') openTrailer(parseInt(actionBtn.getAttribute('data-tmdb-id'), 10), actionBtn);
+    };
+  });
+}
+
 document.addEventListener('click', (e) => {
-  if (!e.target.closest('.stub-more-wrap')) {
-    document.querySelectorAll('.stub-more-panel.open').forEach(p => p.classList.remove('open'));
+  if (!e.target.closest('.stub-more-wrap') && !e.target.closest('#card-menu-root')) {
+    closeCardMenu();
   }
 });
+document.addEventListener('scroll', closeCardMenu, true);
 
 document.getElementById('addbtn').onclick = () => openModal(null);
 document.getElementById('filters-toggle-btn').onclick = () => {
@@ -1116,6 +1171,7 @@ document.getElementById('filters-toggle-btn').onclick = () => {
 };
 document.getElementById('roulettebtn').onclick = openRoulette;
 document.getElementById('statsbtn').onclick = openStats;
+document.getElementById('duplicatesbtn').onclick = openDuplicates;
 document.getElementById('discoverbtn').onclick = () => openDiscover({ mode: 'filters' });
 document.getElementById('suggestionsbtn').onclick = () => openSuggestions();
 document.getElementById('exportbtn').onclick = () => { window.location.href = `${API}/api/films/export.csv`; };
@@ -1510,7 +1566,13 @@ async function addFromDiscover(tmdbId, btn) {
       poster_url: d.poster_url, statut: 'avoir', duree_minutes: d.duree_minutes,
       synopsis: d.synopsis || '', note_tmdb: d.note_tmdb, pays: d.pays || '',
     };
-    await fetch(`${API}/api/films`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await fetch(`${API}/api/films`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) {
+      const err = await res.json();
+      showToast(err.detail || 'Erreur lors de l\'ajout.', 'error');
+      btn.textContent = 'Deja dans ta liste';
+      return;
+    }
     watchlistTmdbIds.add(tmdbId);
     discoverState.results = discoverState.results.filter(r => r.tmdb_id !== tmdbId);
     const card = btn.closest('.discover-card');
@@ -1635,6 +1697,70 @@ async function openSuggestions() {
 
 function closeSuggestions() {
   suggestionsRoot.innerHTML = '';
+}
+
+// --- Doublons ---
+
+async function openDuplicates() {
+  const root = document.getElementById('duplicates-root');
+  root.innerHTML = `
+    <div class="discover-backdrop" id="dup-backdrop">
+      <div class="discover-panel" style="max-width:600px;">
+        <div class="discover-header">
+          <h3>Doublons</h3>
+          <button class="discover-close-x" id="dup-close-x">&times;</button>
+        </div>
+        <div id="dup-body"><div class="discover-empty">Recherche des doublons...</div></div>
+      </div>
+    </div>
+  `;
+  document.getElementById('dup-backdrop').onclick = (e) => { if (e.target.id === 'dup-backdrop') closeDuplicates(); };
+  document.getElementById('dup-close-x').onclick = closeDuplicates;
+
+  const body = document.getElementById('dup-body');
+  try {
+    const res = await fetch(`${API}/api/films/duplicates`);
+    const data = await res.json();
+    if (data.groups.length === 0) {
+      body.innerHTML = '<div class="discover-empty">Aucun doublon detecte. Ta liste est propre.</div>';
+      return;
+    }
+    body.innerHTML = `<div style="font-size:12px;color:var(--ink-faint);margin-bottom:12px;">${data.total_doublons} doublon(s) sur ${data.groups.length} film(s) concerne(s). Garde celui que tu preferes, supprime les autres.</div>` +
+      data.groups.map(group => `
+        <div class="dup-group">
+          <div class="dup-group-title">${escapeHtml(group[0].titre)}</div>
+          ${group.map(f => `
+            <div class="dup-row">
+              ${f.poster_url ? `<img src="${escapeHtml(f.poster_url)}" alt="" />` : ''}
+              <div class="dup-row-info">
+                Ajoute le ${f.date_ajout.slice(0, 10)} &middot; statut : ${f.statut}${f.note != null ? ` &middot; note : ${f.note}` : ''}
+                <div class="dup-row-meta">ID #${f.id}</div>
+              </div>
+              <button class="delbtn" style="font-size:18px;" data-dup-delete="${f.id}" title="Supprimer cette copie">&times;</button>
+            </div>
+          `).join('')}
+        </div>
+      `).join('');
+
+    body.querySelectorAll('[data-dup-delete]').forEach(btn => {
+      btn.onclick = async () => {
+        const id = parseInt(btn.getAttribute('data-dup-delete'), 10);
+        const ok = await showConfirm('Supprimer cette copie ?');
+        if (!ok) return;
+        await fetch(`${API}/api/films/${id}`, { method: 'DELETE' });
+        showToast('Doublon supprime.', 'success');
+        await loadFilms();
+        loadStatsStrip();
+        openDuplicates();
+      };
+    });
+  } catch (e) {
+    body.innerHTML = '<div class="discover-empty">Erreur lors de la recherche des doublons.</div>';
+  }
+}
+
+function closeDuplicates() {
+  document.getElementById('duplicates-root').innerHTML = '';
 }
 
 async function openStats() {

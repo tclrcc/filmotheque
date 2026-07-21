@@ -107,6 +107,15 @@ def create_film(film: FilmIn):
     now = datetime.now(timezone.utc).isoformat()
     date_vu = now if film.statut == "vu" else None
     with get_conn() as conn:
+        if film.tmdb_id:
+            existing = conn.execute(
+                "SELECT id, titre, statut FROM films WHERE tmdb_id = ?", (film.tmdb_id,)
+            ).fetchone()
+            if existing:
+                raise HTTPException(
+                    409,
+                    f"\"{existing['titre']}\" est deja dans ta liste (statut actuel : {existing['statut']}).",
+                )
         cur = conn.execute(
             """INSERT INTO films
                (titre, tmdb_id, annee, genres, acteurs, realisateur, plateforme,
@@ -410,6 +419,22 @@ def list_tmdb_ids():
     with get_conn() as conn:
         rows = conn.execute("SELECT tmdb_id FROM films WHERE tmdb_id IS NOT NULL").fetchall()
     return [row["tmdb_id"] for row in rows]
+
+
+@app.get("/api/films/duplicates")
+def find_duplicates():
+    """Groupes de films en double (meme tmdb_id, ou meme titre exact si tmdb_id absent)."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM films ORDER BY date_ajout ASC").fetchall()
+    films_all = [_row_to_dict(r) for r in rows]
+
+    groups: dict = {}
+    for f in films_all:
+        key = ("tmdb", f["tmdb_id"]) if f["tmdb_id"] else ("titre", f["titre"].strip().lower())
+        groups.setdefault(key, []).append(f)
+
+    duplicate_groups = [g for g in groups.values() if len(g) > 1]
+    return {"groups": duplicate_groups, "total_doublons": sum(len(g) - 1 for g in duplicate_groups)}
 
 
 @app.get("/api/tmdb/search")
