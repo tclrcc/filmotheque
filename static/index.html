@@ -34,7 +34,42 @@
   .header h1 { font-size: 42px; color: var(--gold); }
   .header .sub { font-size: 13px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.05em; }
 
+  .stats-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 1.5rem; }
+  .stats-strip-item { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .stats-strip-val { font-family: 'Bebas Neue', sans-serif; font-size: 28px; color: var(--gold); line-height: 1; }
+  .stats-strip-lbl { font-size: 10.5px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.05em; margin-top: 4px; text-transform: uppercase; }
+  @media (max-width: 640px) {
+    .stats-strip { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .toast-zone { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 200; }
+  .toast {
+    background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--gold);
+    color: var(--ink); padding: 12px 16px; border-radius: 8px; font-size: 13px; min-width: 220px;
+    max-width: 320px; box-shadow: 0 6px 20px rgba(0,0,0,0.4); animation: toast-in 0.2s ease-out;
+  }
+  .toast.error { border-left-color: var(--velvet); }
+  .toast.success { border-left-color: var(--teal); }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .confirm-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; padding: 1rem; z-index: 90; }
+  .confirm-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px; width: 100%; max-width: 380px; text-align: center; }
+  .confirm-card p { font-size: 14px; color: var(--ink); margin-bottom: 18px; }
+  .confirm-actions { display: flex; gap: 8px; justify-content: center; }
+
   .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 1.5rem; align-items: center; }
+  .toolbar-top { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+  .filters-toggle-btn {
+    display: none; background: var(--card); border: 1px solid var(--line); color: var(--ink);
+    padding: 9px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  @media (max-width: 780px) {
+    .filters-toggle-btn { display: inline-block; }
+    .toolbar-collapsible { display: none; }
+    .toolbar-collapsible.open { display: flex; }
+    .stats-strip { grid-template-columns: repeat(2, 1fr); }
+    .grid { grid-template-columns: 1fr; }
+  }
   .toolbar input[type="text"], .toolbar select {
     background: var(--card); border: 1px solid var(--line); color: var(--ink);
     padding: 9px 12px; border-radius: 8px; font-size: 13px; font-family: 'Work Sans', sans-serif;
@@ -294,8 +329,15 @@
     <span class="sub" id="header-sub">SEANCE ILLIMITEE</span>
   </div>
 
-  <div class="toolbar">
+  <div class="stats-strip" id="stats-strip"></div>
+
+  <div class="toolbar-top">
     <input type="text" id="search" placeholder="Chercher un titre, un acteur, un realisateur..." />
+    <button type="button" class="filters-toggle-btn" id="filters-toggle-btn">Filtres</button>
+    <button class="addbtn" id="addbtn">+ Ajouter un film</button>
+  </div>
+
+  <div class="toolbar toolbar-collapsible" id="toolbar-collapsible">
     <div class="ms-wrap" id="ms-genre">
       <button type="button" class="ms-btn" id="ms-genre-btn">Tous genres</button>
       <div class="ms-panel" id="ms-genre-panel"></div>
@@ -340,7 +382,6 @@
     <button class="suggestionsbtn" id="suggestionsbtn">Suggestions</button>
     <button class="statsbtn" id="statsbtn">Statistiques</button>
     <button class="exportbtn" id="exportbtn">Export CSV</button>
-    <button class="addbtn" id="addbtn">+ Ajouter un film</button>
   </div>
 
   <div id="actor-chip-zone"></div>
@@ -353,6 +394,8 @@
 <div id="stats-root"></div>
 <div id="discover-root"></div>
 <div id="suggestions-root"></div>
+<div id="confirm-root"></div>
+<div id="toast-zone" class="toast-zone"></div>
 
 <script>
 const API = '';
@@ -388,6 +431,36 @@ function escapeHtml(s) {
   return (s || '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function splitTags(str) { return (str || '').split(',').map(s => s.trim()).filter(Boolean); }
+
+function showToast(message, type) {
+  const zone = document.getElementById('toast-zone');
+  const el = document.createElement('div');
+  el.className = `toast ${type || ''}`;
+  el.textContent = message;
+  zone.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; setTimeout(() => el.remove(), 300); }, 3200);
+}
+
+function showConfirm(message) {
+  return new Promise((resolve) => {
+    const root = document.getElementById('confirm-root');
+    root.innerHTML = `
+      <div class="confirm-backdrop" id="confirm-backdrop">
+        <div class="confirm-card">
+          <p>${escapeHtml(message)}</p>
+          <div class="confirm-actions">
+            <button class="btn-cancel" id="confirm-no">Annuler</button>
+            <button class="btn-save" style="background:var(--velvet);color:#fff;" id="confirm-yes">Confirmer</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const cleanup = (result) => { root.innerHTML = ''; resolve(result); };
+    document.getElementById('confirm-yes').onclick = () => cleanup(true);
+    document.getElementById('confirm-no').onclick = () => cleanup(false);
+    document.getElementById('confirm-backdrop').onclick = (e) => { if (e.target.id === 'confirm-backdrop') cleanup(false); };
+  });
+}
 
 function formatPlateformes(str, maxShown) {
   const list = splitTags(str);
@@ -702,20 +775,27 @@ function render() {
 
 async function toggleStatus(id) {
   const f = films.find(x => x.id === id);
+  const nowVu = f.statut !== 'vu';
   await fetch(`${API}/api/films/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ statut: f.statut === 'vu' ? 'avoir' : 'vu' }),
+    body: JSON.stringify({ statut: nowVu ? 'vu' : 'avoir' }),
   });
   await loadFilms();
   if (toolbarGenreMS) await toolbarGenreMS.loadOptions();
+  loadStatsStrip();
+  showToast(nowVu ? `"${f.titre}" marque comme vu` : `"${f.titre}" remis dans "a voir"`, 'success');
 }
 
 async function deleteFilm(id) {
-  if (!confirm('Retirer ce film de la filmotheque ?')) return;
+  const f = films.find(x => x.id === id);
+  const ok = await showConfirm(`Retirer "${f ? f.titre : 'ce film'}" de la filmotheque ?`);
+  if (!ok) return;
   await fetch(`${API}/api/films/${id}`, { method: 'DELETE' });
   await loadFilms();
   if (toolbarGenreMS) await toolbarGenreMS.loadOptions();
+  loadStatsStrip();
+  showToast('Film supprime.', 'success');
 }
 
 function openModal(existing) {
@@ -933,6 +1013,7 @@ async function onSaveModal() {
     payload.poster_url = tmdbSelection.poster_url;
   }
 
+  const wasEditing = !!editingId;
   if (editingId) {
     await fetch(`${API}/api/films/${editingId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -945,6 +1026,8 @@ async function onSaveModal() {
   closeModal();
   await loadFilms();
   if (toolbarGenreMS) await toolbarGenreMS.loadOptions();
+  loadStatsStrip();
+  showToast(wasEditing ? `"${titre}" mis a jour` : `"${titre}" ajoute a ta liste`, 'success');
 }
 
 async function openRoulette() {
@@ -1028,6 +1111,9 @@ document.addEventListener('click', (e) => {
 });
 
 document.getElementById('addbtn').onclick = () => openModal(null);
+document.getElementById('filters-toggle-btn').onclick = () => {
+  document.getElementById('toolbar-collapsible').classList.toggle('open');
+};
 document.getElementById('roulettebtn').onclick = openRoulette;
 document.getElementById('statsbtn').onclick = openStats;
 document.getElementById('discoverbtn').onclick = () => openDiscover({ mode: 'filters' });
@@ -1433,9 +1519,12 @@ async function addFromDiscover(tmdbId, btn) {
     if (toolbarGenreMS) await toolbarGenreMS.loadOptions();
     if (toolbarPlatformMS) await toolbarPlatformMS.loadOptions();
     await loadPays();
+    loadStatsStrip();
+    showToast(`"${d.titre}" ajoute a ta liste`, 'success');
   } catch (e) {
     btn.textContent = 'Erreur';
     btn.disabled = false;
+    showToast('Erreur lors de l\'ajout du film.', 'error');
   }
 }
 
@@ -1613,11 +1702,27 @@ function closeStats() {
   statsRoot.innerHTML = '';
 }
 
+async function loadStatsStrip() {
+  const zone = document.getElementById('stats-strip');
+  try {
+    const res = await fetch(`${API}/api/stats`);
+    if (!res.ok) { zone.innerHTML = ''; return; }
+    const s = await res.json();
+    zone.innerHTML = `
+      <div class="stats-strip-item"><div class="stats-strip-val">${s.total_films}</div><div class="stats-strip-lbl">Films</div></div>
+      <div class="stats-strip-item"><div class="stats-strip-val">${s.total_vus}</div><div class="stats-strip-lbl">Vus</div></div>
+      <div class="stats-strip-item"><div class="stats-strip-val">${s.total_a_voir}</div><div class="stats-strip-lbl">A voir</div></div>
+      <div class="stats-strip-item"><div class="stats-strip-val">${s.note_moyenne !== null ? s.note_moyenne : '--'}</div><div class="stats-strip-lbl">Note moy.</div></div>
+    `;
+  } catch (e) { zone.innerHTML = ''; }
+}
+
 loadFilms();
 initToolbarGenreMS();
 initToolbarPlatformMS();
 toolbarDureeRange = setupDurationRange('duree', () => loadFilms());
 loadPays();
+loadStatsStrip();
 </script>
 </body>
 </html>
